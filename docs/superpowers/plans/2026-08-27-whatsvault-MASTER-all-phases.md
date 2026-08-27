@@ -45,10 +45,10 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 5e   Push / notification subsystem                   [Phase-0/Apple-gated contract]
 
 5x   Operations
-     |- CLI
-     |- launchd / service supervision
-     |- permissions / logging / health
-     |- backup + disaster-recovery policy
+     |- CLI                                          SHIPPED (277 tests green)
+     |- launchd / service supervision                SHIPPED
+     |- permissions / logging / health               SHIPPED
+     |- backup + disaster-recovery policy            5x-B: FROZEN deferred decision (#58/DD3)
 
 6    Assembled-system adversarial gauntlet
 ```
