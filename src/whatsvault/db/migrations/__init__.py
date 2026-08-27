@@ -8,7 +8,7 @@ from importlib import resources
 
 MIGRATIONS: dict[str, list[tuple[int, str]]] = {
     "vault": [(1, "vault/0001_initial.sql"), (2, "vault/0002_import_provenance.sql"), (3, "vault/0003_search.sql"), (4, "vault/0004_mcp_visibility.sql"), (5, "vault/0005_ingest_ops.sql")],
-    "control": [(1, "control/0001_initial.sql")],
+    "control": [(1, "control/0001_initial.sql"), (2, "control/0002_device_agreement.sql")],
 }
 
 
