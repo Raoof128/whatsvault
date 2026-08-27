@@ -21,7 +21,7 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 0    Platform / Coexistence verification            gates activation of the write path (not its development)
 
 1a   Vault core                                     SHIPPED (67 tests green)
-1b   Export importer
+1b   Export importer                             SHIPPED (109 tests green)
 1c   Search + Persian normalisation
 
 2a   Authenticated local MCP
