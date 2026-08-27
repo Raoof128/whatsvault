@@ -38,11 +38,11 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 4e   Draft/MCP preparation surface                  SHIPPED (drafts core)
 4f   iOS approval app
 
-5a   Phone-signed capability protocol
-5b   Persistent scheduler
-5c   Template catalogue / canonicalisation
-5d   Status reconciliation + human resolution
-5e   Push / notification subsystem
+5a   Phone-signed capability protocol              SHIPPED (core)
+5b   Persistent scheduler                            SHIPPED (core)
+5c   Template catalogue / canonicalisation          SHIPPED (core; live sync gated)
+5d   Status reconciliation + human resolution        SHIPPED (core)
+5e   Push / notification subsystem                   [Phase-0/Apple-gated contract]
 
 5x   Operations
      |- CLI
