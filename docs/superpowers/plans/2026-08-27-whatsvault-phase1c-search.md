@@ -78,7 +78,7 @@ def test_query_uses_same_pipeline():
 **Files:** Create `src/whatsvault/db/migrations/vault/0003_search.sql`; Modify `migrations/__init__.py`; Create `src/whatsvault/search/index.py`; Test `tests/test_search_index.py`.
 
 **Interfaces:**
-- Migration creates `search_documents(rowid PK, message_id UNIQUE, normaliser_version, text_search, text_compact)` and the two external-content FTS5 tables + the FTS `secure-delete` config.
+- Migration creates `search_documents(rowid INTEGER PRIMARY KEY, message_id TEXT UNIQUE, normaliser_version, text_search, text_compact)` and the two external-content FTS5 tables declared `USING fts5(text_search, content='search_documents', content_rowid='rowid', tokenize=...)` (lexical) / `content_rowid='rowid', tokenize='trigram'` (compact) + the FTS `secure-delete` config. **External-content discipline:** every FTS row's rowid MUST equal its `search_documents.rowid`; deletes use the FTS5 `'delete'` command with the matching rowid+old-values (or a `content=''` contentless variant if simpler) — a plain `DELETE` on an external-content FTS table corrupts it. `index_message` inserts into `search_documents` first, then the FTS rows with that rowid, in one transaction.
 - `index.index_message(vault_conn, message_id, text_original) -> None` — writes `search_documents` + both FTS rows transactionally.
 - `index.reindex_stale(vault_conn) -> int` — recompute rows where `normaliser_version != CURRENT`; returns count.
 - `index.rebuild_all(vault_conn) -> int` — drop + rebuild from `messages.text_original`.
@@ -109,7 +109,7 @@ def test_query_uses_same_pipeline():
 **Interfaces:**
 - `snippet.render(text_original: str, query_terms: list[str], *, window: int = 40) -> dict` — returns `{"display_text": text_original, "spans": [(start,end), ...]}` where spans index into **`text_original`**, computed by running the normaliser in mapping mode over the original and locating normalised query terms, then projecting back to original character offsets.
 
-- [ ] **Step 1: Failing test** — searching `کتاب` in an original body `این كتاب است` (note Arabic Kaf in the original) returns `display_text` byte-identical to the original and a span covering the original `كتاب` substring (the normalised match maps back to the un-normalised characters). Assert `display_text == text_original` exactly (evidence never mangled).
+- [ ] **Step 1: Failing test** — (a) searching `کتاب` in an original body `این كتاب است` (Arabic Kaf in the original) returns `display_text` byte-identical to the original and a span covering the original `كتاب`; (b) a **length-changing** case — a body containing an Arabic diacritic/tatweel that the normaliser strips (so normalised length < original length) — still maps the matched term back to the correct ORIGINAL offsets (proves the mapping is an explicit index map, not a 1:1 assumption). Assert `display_text == text_original` exactly in both.
 - [ ] **Step 2: Run — expect FAIL.** **Step 3: Write** `snippet.py` (a mapping-mode normaliser that emits `(original_index → normalised_index)` at token boundaries; locate term in normalised, project span back). **Step 4: PASS.** **Step 5: Commit** `feat: original-text snippet rendering via span mapping`.
 
 ---

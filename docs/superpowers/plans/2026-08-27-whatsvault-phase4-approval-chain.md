@@ -44,7 +44,7 @@
 
 **Interfaces:**
 - `verify.verify(payload: bytes, signature_rs: bytes, public_key_sec1: bytes) -> bool` — raw `r||s` (64B) → `encode_dss_signature` → verify with `ec.ECDSA(hashes.SHA256())`; public key from SEC1 uncompressed point.
-- `verify.sign_for_test(payload: bytes, private_key) -> bytes` — a deterministic **software** P-256 signer producing raw `r||s`, for tests only (production key is Secure Enclave).
+- `verify.sign_for_test(payload: bytes, private_key) -> bytes` — a **software** P-256 signer (tests only; production key is Secure Enclave) producing raw `r||s`. NOTE: `cryptography`'s ECDSA is randomised — signing the same payload twice yields different signatures (verified). That is *why* signature bytes are not a replay key; replay identity is `device_id + nonce`. The golden vectors (Task 1) fix the *payload* bytes, never the signature.
 
 - [ ] **Step 1: Failing test** — sign_for_test → verify roundtrip passes; a one-byte payload mutation, a recipient mutation, an expiry mutation, and a `decision=REJECT`-vs-`APPROVE` swap all fail verification; a signature from a different keypair fails; the same payload signed twice yields different signatures (ECDSA randomised) yet both verify — so signature bytes are NOT a replay key.
 - [ ] **Step 2: Run — expect FAIL.** **Step 3: Write** `verify.py`. **Step 4: PASS.** **Step 5: Commit** `feat: P-256 signature verification with raw r||s handling`.

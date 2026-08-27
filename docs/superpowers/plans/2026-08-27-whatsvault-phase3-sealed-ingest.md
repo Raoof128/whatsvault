@@ -87,7 +87,7 @@
 
 **Deliverables (not runnable against live Meta until Phase 0):**
 - Worker verifies `X-Hub-Signature-256` HMAC over the **raw** body (constant-time) **before** parse; GET handshake validates `verify_token`; enforces POST-only, `Content-Type` allowlist, body ≤ 1 MB.
-- Seals the payload with `sealed`-equivalent WebCrypto (X25519→HKDF→AES-256-GCM, header as AAD), enqueues to the bound Queue; never logs plaintext.
+- Seals the payload with `sealed`-equivalent WebCrypto (X25519→HKDF→AES-256-GCM, header as AAD), enqueues to the bound Queue; never logs plaintext. **Build gate:** confirm the deployed Workers runtime's WebCrypto exposes X25519 `deriveBits` + HKDF + AES-GCM (the Python side is verified; a Miniflare/`wrangler dev` probe must confirm the Worker side before relying on it — if X25519 is unavailable, fall back to an ECDH P-256 sealed envelope, which is universally supported).
 - `wrangler.jsonc`: main Queue producer binding + `max_retries: 100` + `dead_letter_queue: whatsvault-ingest-dlq`; 14-day retention (Phase-0 V14).
 - Optional metadata-only daily ingress counter (D1), no content.
 

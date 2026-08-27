@@ -62,11 +62,15 @@ def test_observation_unique_per_batch_ordinal(tmp_path):
     conn.execute("INSERT INTO messages(id, account_id, conversation_id, direction, ts_lower_ms, ts_upper_ms_exclusive, "
                  "ts_precision, type, text_original, origin, window_eligible) "
                  "VALUES('msg_1','acc','cnv','in',1,60001,'min','text','hi','manual_export',0)")
+    conn.execute("INSERT INTO messages(id, account_id, conversation_id, direction, ts_lower_ms, ts_upper_ms_exclusive, "
+                 "ts_precision, type, text_original, origin, window_eligible) "
+                 "VALUES('msg_2','acc','cnv','in',1,60001,'min','text','yo','manual_export',0)")
     ins = ("INSERT INTO message_import_observations(batch_id, message_id, source_ordinal, source_start_offset, "
-           "source_end_offset, source_fingerprint) VALUES('bat_1','msg_1',?,0,10,'fp')")
-    conn.execute(ins, (1,))
+           "source_end_offset, source_fingerprint) VALUES('bat_1',?,?,0,10,'fp')")
+    conn.execute(ins, ("msg_1", 1))
+    # DIFFERENT message, SAME ordinal -> must hit UNIQUE(batch_id, source_ordinal), not the PK
     with pytest.raises(sqlcipher3.IntegrityError):
-        conn.execute(ins, (1,))     # same (batch, ordinal) rejected
+        conn.execute(ins, ("msg_2", 1))
 
 
 def test_participant_link_state_constrained(tmp_path):
