@@ -17,12 +17,13 @@ def test_migrate_is_idempotent_and_sets_version(tmp_path):
 
 def test_partial_failure_does_not_bump_version(tmp_path, monkeypatch):
     conn = _conn(tmp_path)
+    good_max = max(v for v, _ in M.MIGRATIONS["vault"])
     M.migrate(conn, "vault")
     monkeypatch.setitem(M.MIGRATIONS, "vault",
-                        M.MIGRATIONS["vault"] + [(2, "vault/_bogus.sql")])
+                        M.MIGRATIONS["vault"] + [(good_max + 1, "vault/_bogus.sql")])
     real_read = M._read_asset
     monkeypatch.setattr(M, "_read_asset",
                         lambda p: "CREATE TABLE bad(;" if p.endswith("_bogus.sql") else real_read(p))
     with pytest.raises(Exception):
         M.migrate(conn, "vault")
-    assert M.user_version(conn) == 1
+    assert M.user_version(conn) == good_max

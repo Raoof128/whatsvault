@@ -18,6 +18,7 @@ PREFIXES = frozenset({
     "cap",  # capability_grants
     "dev",  # approval_devices
     "bat",  # import_batches
+    "imp",  # import_participants
     "aud",  # audit_log
 })
 

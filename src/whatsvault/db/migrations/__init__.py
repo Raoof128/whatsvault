@@ -7,7 +7,7 @@ atomically; a failure rolls back and leaves the version unchanged."""
 from importlib import resources
 
 MIGRATIONS: dict[str, list[tuple[int, str]]] = {
-    "vault": [(1, "vault/0001_initial.sql")],
+    "vault": [(1, "vault/0001_initial.sql"), (2, "vault/0002_import_provenance.sql")],
     "control": [(1, "control/0001_initial.sql")],
 }
 
