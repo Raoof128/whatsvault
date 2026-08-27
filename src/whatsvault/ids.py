@@ -19,6 +19,7 @@ PREFIXES = frozenset({
     "dev",  # approval_devices
     "bat",  # import_batches
     "imp",  # import_participants
+    "dlq",  # ingest_dlq
     "aud",  # audit_log
 })
 
