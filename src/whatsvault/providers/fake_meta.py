@@ -13,6 +13,7 @@ class FakeMeta:
     def __init__(self, mode="ok"):
         self.mode = mode
         self.sends = []
+        self.mark_reads = []
 
     def send_text(self, *, phone_number_id, recipient_wa_id, body) -> dict:
         if self.mode == "timeout_after_send":
@@ -27,3 +28,7 @@ class FakeMeta:
 
     def health(self) -> dict:
         return {"ok": True}
+
+    def mark_read(self, *, wamid) -> dict:
+        self.mark_reads.append(wamid)
+        return {"outcome": "OK"}

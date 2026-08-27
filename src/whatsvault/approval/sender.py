@@ -10,7 +10,7 @@ import hashlib
 import sqlcipher3
 
 from .. import ids
-from . import canonical, devices, policy, verify
+from . import canonical, capabilities, devices, policy, verify
 from .clockguard import ClockUntrusted
 from ..providers.fake_meta import ConnectFailed, TimeoutAfterSend
 
@@ -112,3 +112,22 @@ def recover_startup(control_conn, now_ms) -> dict:
         "UPDATE send_attempts SET state='INDETERMINATE', updated_at_ms=? WHERE state='SUBMITTING'", (now_ms,))
     control_conn.commit()
     return {"recovered": cur.rowcount}
+
+
+def mark_read(vault_conn, control_conn, provider, *, conversation_id, wamid, account_id, now_ms) -> dict:
+    """Bind the target BEFORE consuming a grant (ledger #9): the wamid must exist, belong
+    to conversation_id, be inbound, and match the account. Only then is a MARK_READ
+    capability consumed (a typing indicator is a different action, not authorised here)."""
+    m = vault_conn.execute(
+        "SELECT conversation_id, direction FROM messages WHERE wamid=? AND account_id=?",
+        (wamid, account_id)).fetchone()
+    if not m:
+        return {"outcome": "DENIED", "reason": "UNKNOWN_TARGET"}
+    if m["conversation_id"] != conversation_id:
+        return {"outcome": "DENIED", "reason": "TARGET_CONVERSATION_MISMATCH"}
+    if m["direction"] != "in":
+        return {"outcome": "DENIED", "reason": "NOT_INBOUND"}
+    if not capabilities.verify_and_consume(control_conn, "MARK_READ", conversation_id, now_ms):
+        return {"outcome": "DENIED", "reason": "AUTHORIZATION_MISSING"}
+    provider.mark_read(wamid=wamid)
+    return {"outcome": "OK"}
