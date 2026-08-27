@@ -20,6 +20,10 @@ PREFIXES = frozenset({
     "bat",  # import_batches
     "imp",  # import_participants
     "dlq",  # ingest_dlq
+    "tpl",  # templates
+    "job",  # scheduled_jobs
+    "run",  # job_runs
+    "rcn",  # reconciliation_candidates
     "aud",  # audit_log
 })
 

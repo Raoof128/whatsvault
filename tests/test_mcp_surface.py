@@ -28,6 +28,6 @@ def test_handlers_require_token(tmp_path):
     handlers = server.build_tool_handlers(v, c, token, audit_key)
     with pytest.raises(PermissionError):
         handlers["list_templates"](bearer="wrong")
-    assert handlers["list_templates"](bearer=token)["status"] == "FEATURE_NOT_INITIALISED"
+    assert handlers["list_templates"](bearer=token)["status"] == "OK"
     row = c.execute("SELECT tool, args_hash FROM audit_log").fetchone()
     assert row["tool"] == "list_templates" and len(row["args_hash"]) == 64

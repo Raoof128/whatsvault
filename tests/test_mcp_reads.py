@@ -63,9 +63,11 @@ def test_conversation_window(tmp_path):
     assert reads.get_conversation_window(ctrl, "none", 5)["open"] is False
 
 
-def test_list_templates_feature_not_initialised(tmp_path):
+def test_list_templates_empty_after_phase5_schema(tmp_path):
+    # Phase 5 control migration 0003 creates the templates table -> OK with an empty catalogue
     ctrl = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(ctrl, "control")
-    assert reads.list_templates(ctrl)["status"] == "FEATURE_NOT_INITIALISED"
+    out = reads.list_templates(ctrl)
+    assert out["status"] == "OK" and out["templates"] == []
 
 
 def test_get_message_status(tmp_path):
