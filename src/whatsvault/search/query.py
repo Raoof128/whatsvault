@@ -115,7 +115,7 @@ def _filters(q: SearchQuery):
 def _tier(conn, fts: str, match: str, q: SearchQuery, lim: int):
     preds, params = _filters(q)
     where = " AND ".join([f"{fts} MATCH ?"] + preds)
-    sql = (f"SELECT sd.message_id, m.text_original, bm25({fts}) AS rank "
+    sql = (f"SELECT sd.message_id, m.text_original, m.conversation_id, bm25({fts}) AS rank "
            f"FROM {fts} f JOIN search_documents sd ON sd.rowid=f.rowid "
            f"JOIN messages m ON m.id=sd.message_id WHERE {where} ORDER BY rank LIMIT ?")
     return conn.execute(sql, [match] + params + [lim]).fetchall()
@@ -128,15 +128,17 @@ def run(conn, q: SearchQuery) -> list[dict]:
     lex = compile_lexical(q)
     if lex:
         for r in _tier(conn, "fts_lexical", lex, q, lim):
-            if r[0] in seen:
+            if r["message_id"] in seen:
                 continue
-            seen.add(r[0])
-            results.append({"message_id": r[0], "text_original": r[1], "rank": r[2], "tier": "lexical"})
+            seen.add(r["message_id"])
+            results.append({"message_id": r["message_id"], "text_original": r["text_original"],
+                            "conversation_id": r["conversation_id"], "rank": r["rank"], "tier": "lexical"})
     comp = compile_compact(q)
     if comp and len(results) < lim:
         for r in _tier(conn, "fts_compact", comp, q, lim):
-            if r[0] in seen:
+            if r["message_id"] in seen:
                 continue
-            seen.add(r[0])
-            results.append({"message_id": r[0], "text_original": r[1], "rank": r[2], "tier": "compact"})
+            seen.add(r["message_id"])
+            results.append({"message_id": r["message_id"], "text_original": r["text_original"],
+                            "conversation_id": r["conversation_id"], "rank": r["rank"], "tier": "compact"})
     return results[:lim]
