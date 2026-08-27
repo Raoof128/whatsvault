@@ -95,3 +95,15 @@ def check_search(vault_conn) -> list[dict]:
     findings.append({"check": "search_normaliser_stale", "ok": stale == 0,
                      "detail": f"{stale} row(s) at a stale normaliser_version"})
     return findings
+
+
+def check_ingest(vault_conn) -> list[dict]:
+    findings: list[dict] = []
+    depth = vault_conn.execute("SELECT COUNT(*) FROM ingest_dlq").fetchone()[0]
+    findings.append({"check": "dlq_depth", "ok": depth == 0, "detail": f"{depth} DLQ row(s)"})
+    oldest = vault_conn.execute("SELECT MIN(first_seen_ms) FROM ingest_dlq").fetchone()[0]
+    findings.append({"check": "dlq_oldest_first_seen_ms", "ok": oldest is None, "detail": str(oldest)})
+    row = vault_conn.execute("SELECT circuit_state, reason FROM ingest_state WHERE id=1").fetchone()
+    findings.append({"check": "circuit_breaker", "ok": row[0] == "CLOSED",
+                     "detail": row[0] + (f": {row[1]}" if row[1] else "")})
+    return findings
