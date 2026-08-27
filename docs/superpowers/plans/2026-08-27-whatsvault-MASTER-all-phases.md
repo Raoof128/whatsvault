@@ -24,7 +24,7 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 1b   Export importer                             SHIPPED (109 tests green)
 1c   Search + Persian normalisation                SHIPPED (137 tests green)
 
-2a   Authenticated local MCP
+2a   Authenticated local MCP                        SHIPPED (160 tests green)
 2b   ChatGPT/OpenAI connectivity gate
 
 3a   Sealed-envelope protocol
