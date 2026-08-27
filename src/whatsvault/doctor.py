@@ -2,6 +2,7 @@
 A doctor reconstructs evidence truth and repairs drift; it never preserves a
 forged or future window value. Send-side invariants I2/I3/I4 are Phase 4."""
 from whatsvault import ids
+from whatsvault.search import normalise as _N
 
 
 def advance_window(control_conn, conversation_id: str, incoming_provider_ms: int) -> int:
@@ -64,4 +65,33 @@ def check_vault(vault_conn) -> list[dict]:
     findings.append({"check": "cipher_integrity_check", "ok": len(cic) == 0,
                      "detail": f"{len(cic)} encrypted-page HMAC failure(s)"})
 
+    return findings
+
+
+def check_search(vault_conn) -> list[dict]:
+    findings: list[dict] = []
+    for fts in ("fts_lexical", "fts_compact"):
+        try:
+            vault_conn.execute(f"INSERT INTO {fts}({fts}) VALUES('integrity-check')")
+            findings.append({"check": f"{fts}_integrity", "ok": True, "detail": "ok"})
+        except Exception as exc:  # noqa: BLE001 - report, never mask
+            findings.append({"check": f"{fts}_integrity", "ok": False, "detail": str(exc)})
+
+    orphans = vault_conn.execute(
+        "SELECT COUNT(*) FROM search_documents sd LEFT JOIN messages m ON m.id=sd.message_id "
+        "WHERE m.id IS NULL").fetchone()[0]
+    findings.append({"check": "search_orphans", "ok": orphans == 0,
+                     "detail": f"{orphans} search_documents row(s) with no message"})
+
+    missing = vault_conn.execute(
+        "SELECT COUNT(*) FROM messages m LEFT JOIN search_documents sd ON sd.message_id=m.id "
+        "WHERE m.text_original IS NOT NULL AND sd.message_id IS NULL").fetchone()[0]
+    findings.append({"check": "search_missing", "ok": missing == 0,
+                     "detail": f"{missing} message(s) with text not indexed"})
+
+    stale = vault_conn.execute(
+        "SELECT COUNT(*) FROM search_documents WHERE normaliser_version != ?",
+        (_N.NORMALISER_VERSION,)).fetchone()[0]
+    findings.append({"check": "search_normaliser_stale", "ok": stale == 0,
+                     "detail": f"{stale} row(s) at a stale normaliser_version"})
     return findings
