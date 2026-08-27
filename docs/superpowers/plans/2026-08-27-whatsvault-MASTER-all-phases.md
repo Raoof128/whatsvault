@@ -1,8 +1,11 @@
 # WhatsVault — Master Implementation Plan (all phases)
 
-> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use `- [ ]` checkboxes. This single document merges every phase; each phase below is self-contained and may be executed independently in dependency order.
+> **For agentic workers:** REQUIRED SUB-SKILL: superpowers:subagent-driven-development or superpowers:executing-plans. Steps use `- [ ]` checkboxes. This single document is the canonical roadmap + corrections ledger; the phase sections embedded below are **reference drafts**, superseded at execution time by the just-in-time plan for that phase.
 
-**What this is:** the complete, phased build of WhatsVault — a single-user, private, hardware-approval-gated WhatsApp vault + MCP. It merges nine phase plans (0, 1a, 1b, 1c, 2, 3, 4, 5, 6). Phase 1a is **shipped**; the rest are ready to execute in the order the roadmap gives.
+> ## Execution rule
+> **This document is the canonical architecture roadmap and binding corrections ledger. It must not be executed directly.** Before implementing any unshipped phase, generate a standalone, full TDD implementation plan from the design spec, this roadmap, the corrections ledger, and the current repository state. That standalone plan must pass a fresh consistency and ambiguity review before execution.
+
+**What this is:** the complete, phased build of WhatsVault — a single-user, private, hardware-approval-gated WhatsApp vault + MCP. It merges nine phase plans (0, 1a, 1b, 1c, 2, 3, 4, 5, 6). Phase 1a is **shipped**; every other phase is executed only via its own just-in-time plan (see the Execution rule above).
 
 **Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` — the design of record. Every phase argues from it.
 
@@ -12,19 +15,45 @@
 
 ## Roadmap & dependencies
 
-| Phase | Title | Depends on (impl / activation) | Buildable now? | Status |
-|-------|-------|--------------------------------|----------------|--------|
-| 0  | Coexistence & Cloud API verification | external Meta/BSP | needs access | pending — **gates activation of 3–5, not their development** |
-| 1a | Vault core | — | ✅ | **SHIPPED (67 tests green)** |
-| 1b | Export importer | 1a | ✅ (fixtures) | ready |
-| 1c | Search + Persian normalisation | 1a | ✅ | ready |
-| 2  | Read-only MCP | 1a, 1c | ✅ | ready |
-| 3  | Sealed edge relay + ingest | 1a (impl) / 0 (activation) | core ✅; edge/live gated | ready (core) |
-| 4  | Approval chain | 1a, 2, 3 (impl) / 0 + Apple Dev (activation) | core ✅; iOS/live gated | ready (core) |
-| 5  | Scheduler, templates, capabilities, status UX | 4 (impl) / 0 (activation) | core ✅; live sync gated | ready (core) |
-| 6  | Assembled-system adversarial gauntlet | 0–5 | after 0–5 | pending |
+Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 gauntlet. Each is planned and executed via its own just-in-time TDD plan (Execution rule), inheriting the Corrections Ledger below.
 
-**Build order:** 1a ✅ → (1b ∥ 1c) → 2 → 3-core → 4-core → 5-core → [Phase 0 activation] → 3/4/5 live → 6. The read/vault half (1b, 1c, 2) needs **nothing external** and proceeds regardless of Phase 0. The write half (3/4/5) builds its cores against fakes/fixtures now and activates against Meta/Cloudflare/iOS only after Phase 0 passes — writing test-first code against unverified provider behaviour is forbidden by the design doctrine.
+```text
+0    Platform / Coexistence verification            gates activation of the write path (not its development)
+
+1a   Vault core                                     SHIPPED (67 tests green)
+1b   Export importer
+1c   Search + Persian normalisation
+
+2a   Authenticated local MCP
+2b   ChatGPT/OpenAI connectivity gate
+
+3a   Sealed-envelope protocol
+3b   Edge Worker + Queue + oversized R2 spill + edge DLQ
+3c   Local ingest + fan-out + policy-projection reconciliation
+
+4a   Canonical decision + shared policy engine
+4b   Two-key device identity + enrolment protocol
+4c   Approval relay + device sealing
+4d   Meta credential daemon + sender
+4e   Draft/MCP preparation surface
+4f   iOS approval app
+
+5a   Phone-signed capability protocol
+5b   Persistent scheduler
+5c   Template catalogue / canonicalisation
+5d   Status reconciliation + human resolution
+5e   Push / notification subsystem
+
+5x   Operations
+     |- CLI
+     |- launchd / service supervision
+     |- permissions / logging / health
+     |- backup + disaster-recovery policy
+
+6    Assembled-system adversarial gauntlet
+```
+
+**Build order:** 1a done -> (1b || 1c) -> 2a -> 3a/3b/3c-core -> 4a-4e-core -> 5a-5e-core -> [Phase 0 activation] -> 2b + 3/4/5 live + 4f + 5x -> 6. The read/vault half (1b, 1c, 2a) needs **nothing external** and proceeds regardless of Phase 0. The write half builds its cores against fakes/fixtures now and activates against Meta/Cloudflare/iOS/OpenAI only after Phase 0 passes.
 
 ---
 
@@ -49,6 +78,405 @@
 
 **Migration numbering (monotonic, no collisions):** vault `0001`(1a) → `0002`(1b import) → `0003`(1c search) → `0004`(3 ingest DLQ); control `0001`(1a) → `0002`(5 templates).
 
+
+## Corrections Ledger (binding)
+
+The adopted findings from the 2026-08-27 line-by-line gauntlet — all 60 verified against the phase plan files and, where empirical, against the running system (55 confirmed, 5 refined, 0 rejected). Numbering **#1–#60 is stable across reviews** so findings can be referenced by number. Each correction is binding on the just-in-time plan for the phase in **Applies to**.
+
+**Precedence rule:** A just-in-time phase plan may **strengthen** a ledger correction but may **not weaken, omit, or reinterpret** it without first updating this master and recording the design decision (with rationale) here. This makes the ledger binding, not decorative.
+
+**Status legend:** `BINDING` = must be honoured by the phase's JIT plan · `PHASE-0-CONTINGENT` = the correction is fixed but its activation/exact form waits on a Phase 0 finding · `BINDING FOLLOW-UP` = affects already-shipped Phase 1a; **do not rewrite shipped history** — schedule as a corrective security/maintenance patch (with its own small plan) before any live private data.
+
+---
+
+**#1 — Sealed envelope must serialise every AAD-bound field**
+- **Status:** BINDING · **Applies to:** 3a
+- **Correction:** Define an explicit, serialisation-independent envelope: `magic || envelope_version || algorithm_id || crypto_version || recipient_key_id || event_id_hash || ephemeral_pub || nonce || ciphertext_len || ct‖tag`, and `AAD = exact encoded bytes of (envelope_version, algorithm_id, crypto_version, recipient_key_id, event_id_hash)`. No dict/JSON/implementation-dependent serialisation. The Mac must be able to reconstruct the exact AAD from the envelope alone.
+- **Acceptance test:** TS-sealed envelope opens in Python and Python-sealed opens in TS; flipping any AAD-bound header byte yields `InvalidTag`; a byte-exact envelope golden vector is checked in and reproduced by both implementations.
+- **Source/finding:** #1 — envelope omits `event_id_hash`/`crypto_version` (phase3:33). INV-EDGE-AAD.
+
+**#2 — Webhook fan-out, Mac-side after decrypt (refined)**
+- **Status:** BINDING · **Applies to:** 3c
+- **Correction:** One Meta POST may carry many atomic events (`entry[].changes[].value.messages[]/statuses[]`). Fan-out happens **Mac-side after decrypt**, in the ingest consumer — the edge Worker stays raw-body dumb and never parses attacker JSON into semantics. Replace `classify(payload)->str` / `to_rows(payload)->dict` with `split_webhook(decrypted)->list[AtomicEvent]`; each atomic event gets its own family, provider timestamp, `semantic_event_key` and domain writes. The queue message is ACKed only after **all** children reach durable dispositions.
+- **Acceptance test:** a fixture POST containing one message + two statuses yields three atomic events with independent dedupe keys/dispositions; partial failure of one child blocks ACK of the whole queue message; the edge Worker contains no per-event semantic parsing.
+- **Source/finding:** #2 — single-event `classify` (phase3:45-47). Refined: fan-out is Mac-side, not edge-side.
+
+**#3 — 128 KB Queue cap: oversized ciphertext spills to R2 (refined)**
+- **Status:** BINDING · **Applies to:** 3b
+- **Correction:** Cloudflare Queues cap a message at ~128 KB while the Worker admits bodies ≤1 MB. Normal webhooks are single-digit KB, so the **normal path stays Queue**. Only an oversized sealed body spills to an encrypted **R2** object (ciphertext only); the queue then carries a pointer `{r2_object_id, ciphertext_sha256, recipient_key_id, crypto_version, event_id_hash}`. Mac fetches, verifies the hash, commits, ACKs, deletes the R2 object. Requires R2 lifecycle/orphan cleanup + scoped credentials. Do **not** route every event through R2.
+- **Acceptance test:** a >128 KB sealed body is stored in R2 with a pointer enqueued; the Mac reconstructs, verifies `ciphertext_sha256`, commits and deletes; a normal body never touches R2; an orphaned R2 object is detected and cleaned.
+- **Source/finding:** #3 — 128 KB vs 1 MB (phase3:89-91). Refined: R2 spill for the oversized case only, not R2-always.
+
+**#4 — Pull-consumer/DLQ config + explicit edge-DLQ drainer**
+- **Status:** BINDING · **Applies to:** 3b
+- **Correction:** Retry/DLQ config belongs to the **consumer**, not the producer binding. An edge DLQ with **no active consumer retains only ~4 days**, so define an explicit edge-DLQ drainer/consumer + retention plan to reach the intended 14-day net. Confirm exact current semantics at Phase 0 V14.
+- **Acceptance test:** the edge DLQ has a defined consumer/drainer; a message routed to it is retrievable within the target window; wrangler config places retry/DLQ on the consumer per current Cloudflare semantics.
+- **Source/finding:** #4 — DLQ config + 4-day retention (phase3:91). INV-CIPHERTEXT-adjacent.
+
+**#5 — iPhone needs two Secure Enclave keys (sign + key-agreement)**
+- **Status:** BINDING · **Applies to:** 4b
+- **Correction:** The device needs two distinct SE P-256 keys — a **Signing** key (approvals, ECDSA) and a **KeyAgreement** key (device sealing, ECDH). One key cannot do both. Enrolment pins `signing_public_key` + `agreement_public_key` (+ versions) bound to the same device; the relay seals to the agreement key, the approval verifies against the signing key.
+- **Acceptance test:** an enrolled device record carries both public keys; a draft sealed to the agreement key decrypts on-device; an approval verifies against the signing key; using either key in the other role fails.
+- **Source/finding:** #5 — single `public_key_sec1` (phase4:71) vs seal-to-device (phase4:112). INV-HARDWARE.
+
+**#6 — Define the actual enrolment protocol (QR + mutual challenge)**
+- **Status:** BINDING · **Applies to:** 4b
+- **Correction:** Specify the protocol, not just `devices.enroll(...)`: Mac shows a QR (`pairing_id`, Mac challenge, relay-key fingerprint); iPhone generates both keys and signs `DOMAIN‖pairing_id‖challenge‖signing_pub‖agreement_pub`; Mac verifies; human confirms the pairing fingerprint; both keys are pinned. No MCP/tool path reaches the final pin. Phase 6 attacks this, so it must exist.
+- **Acceptance test:** enrolment succeeds only with a valid device signature binding both public keys to the challenge; a MITM substitution of either key is rejected; no MCP path can reach the pin.
+- **Source/finding:** #6 — enrolment unspecified (phase4:71). INV-HARDWARE.
+
+**#7 — Capabilities are phone-signed, never Mac-minted**
+- **Status:** BINDING · **Applies to:** 5a
+- **Correction:** The Mac has no signing key and cannot mint a capability. Remove `devices.mint_grant` as a Mac-side minting op. A `WHATSVAULT-CAPABILITY-V1` grant is **signed on the iPhone** (Face ID -> SE signing key) after an on-device confirmation of scope; the Mac verifies + stores. CLI/phone UI may initiate/administer the workflow; only the phone signs the authority.
+- **Acceptance test:** a stored grant verifies against the pinned device signing key; no code path lets Mac/CLI/MCP produce a valid grant signature; the on-device scope shown matches the signed scope.
+- **Source/finding:** #7 — `mint_grant` on the Mac (phase5 Task 1). INV-HARDWARE.
+
+**#8 — Capability cross-language golden vectors**
+- **Status:** BINDING · **Applies to:** 5a
+- **Correction:** `WHATSVAULT-CAPABILITY-V1` needs Swift↔Python golden vectors exactly like `WHATSVAULT-DRAFT-DECISION-V1`. Add `tests/golden/capability-vectors.json`.
+- **Acceptance test:** Python-encode == Swift-encode byte-for-byte; Swift-sign -> Python-verify; one-byte mutation of scope/conversation/action/expiry each -> reject.
+- **Source/finding:** #8 — no capability vectors (phase5 vs phase4:29,37).
+
+**#9 — `mark_read` must bind its target before spending a grant**
+- **Status:** BINDING · **Applies to:** 5a / 4d
+- **Correction:** Before consuming a grant, verify: `wamid` exists, belongs to `conversation_id`, `direction == inbound`, account/transport match, and is a valid mark-read target (outbound IDs invalid). Capability consumption and action-attempt creation are atomic.
+- **Acceptance test:** a grant for conversation A + a wamid from conversation B -> rejected, no consumption; an outbound wamid -> rejected; a valid inbound target -> consumes exactly one grant unit and opens one action-attempt in one transaction.
+- **Source/finding:** #9 — `mark_read(conversation_id, wamid)` unbound (phase5 Task 2).
+
+**#10 — Distinct `target_message_wamid` for non-message actions**
+- **Status:** BINDING · **Applies to:** 4a
+- **Correction:** Do not overload `reply_to_wamid` as an action target. Add an explicit `target_message_wamid` (or a separate canonical payload for non-message actions) so a signed read-receipt target is unambiguous.
+- **Acceptance test:** a read-receipt canonical payload encodes `target_message_wamid` distinctly from `reply_to_wamid`; golden vectors cover both.
+- **Source/finding:** #10 — `reply_to_wamid` != target (phase4:32).
+
+**#11 — One shared P1–P7 policy engine**
+- **Status:** BINDING · **Applies to:** 4a
+- **Correction:** Create `approval/policy.py` with `evaluate_prepare(...)`/`evaluate_send(...)` over shared P1–P7 primitives. Both `drafts.prepare` and `sender.execute_write` call it; send remains stricter and authoritative and re-evaluates inside the transaction.
+- **Acceptance test:** prepare and send import the same policy source; a draft that passes prepare, then state changes, is re-evaluated and rejected at send; no duplicated policy logic in drafts.py/sender.py.
+- **Source/finding:** #11 — P1–P7 duplicated (phase4:19,99). INV-SENDPOLICY.
+
+**#12 — Sender owns clock trust (`ClockGuard`), not the caller**
+- **Status:** BINDING · **Applies to:** 4d
+- **Correction:** Remove `clock_ok` as a caller argument. The sender owns an internal `ClockGuard` (wall+monotonic, last NTP check, discontinuity detection, max skew) and calls `clock_guard.can_authorise(now)` itself. No caller can assert `clock_ok=True`.
+- **Acceptance test:** `execute_write` has no caller-supplied clock-trust parameter; a simulated backward jump / stale NTP causes the sender's own guard to refuse; a caller cannot bypass it.
+- **Source/finding:** #12 — `clock_ok` caller assertion (phase4:86). INV-SENDPOLICY.
+
+**#13 — Crash recovery for `SUBMITTING`/unprocessed envelopes**
+- **Status:** BINDING · **Applies to:** 4d
+- **Correction:** On `whatsvault-meta` startup, `send_attempts` in `SUBMITTING` are conservatively moved to `INDETERMINATE` unless deterministic evidence resolves them; the dispatcher rescans durable valid approval envelopes not yet in a terminal action state. Approval-triggered send must be crash-durable.
+- **Acceptance test:** a crash after the SUBMITTING commit leaves the attempt recoverable to INDETERMINATE (never silent loss, never blind resend); a restart with an unprocessed valid envelope drives exactly one dispatch.
+- **Source/finding:** #13 — SUBMITTING recovery undefined (phase4).
+
+**#14 — Relay structural pre-check as defence-in-depth (refined)**
+- **Status:** BINDING · **Applies to:** 4c
+- **Correction:** The relay performs cheap structural verification (known device? signature parses? payload parses? draft exists? signed draft-id matches?) before persisting into the received-envelope table — as **defence-in-depth, not** a fix for an open vulnerability. Refinement: the uniqueness tuple includes the device-sealed `nonce`, so an attacker who cannot break the device seal cannot pre-empt the slot; this hardens, it does not close a known-open nonce-preemption hole. The relay grants no send authority; the sender re-verifies everything.
+- **Acceptance test:** a structurally-invalid envelope is rejected before it can occupy the uniqueness slot; a structurally-valid-but-unauthorised envelope still cannot cause a send; the relay writes no APPROVED state.
+- **Source/finding:** #14 — relay pre-emption (phase4:113). Refined to defence-in-depth (nonce is secret).
+
+**#15 — Display guard must not blanket-flag ZWNJ**
+- **Status:** BINDING · **Applies to:** 4c / 4f
+- **Correction:** `U+200C` ZWNJ is allowed contextually within Persian-script sequences (consistent with Phase 1c). Policy: bidi override/isolate controls = high risk; ZWSP/WORD-JOINER/other invisibles = warn; ZWJ contextual. Name the TR39 confusables library + version used for skeleton collision.
+- **Acceptance test:** a legitimate Persian body using ZWNJ (e.g. mi-ZWNJ-ravam) is `safe`; a bidi-override injection is flagged; the confusables implementation (library + version) is pinned and tested.
+- **Source/finding:** #15 — ZWNJ over-flagging (phase4:59). INV-DISPLAY.
+
+**#16 — Don't assert ECDSA signatures must differ (refined)**
+- **Status:** BINDING · **Applies to:** 4a
+- **Correction:** Remove any assertion that two signatures over the same payload must differ (a deterministic RFC6979 signer could produce equal signatures). Keep "both verify"; demote signature-difference to a non-load-bearing observation. Assert the real invariant: signature bytes are never replay identity — replay identity is `device_id + nonce`.
+- **Acceptance test:** the suite contains no "signatures must differ" assertion; it asserts replay is rejected by `device_id+nonce` regardless of signature bytes.
+- **Source/finding:** #16 — asserts randomness (phase4:49). Refined.
+
+**#17 — Template params canonicalisation (`WHATSVAULT-TEMPLATE-PARAMS-V1`)**
+- **Status:** BINDING · **Applies to:** 5c
+- **Correction:** Define an explicit canonical encoding (parameter ordinal, component type, parameter type, UTF-8 text / binary hash) from which `template_params_sha256` is computed, with golden vectors. Bind template name + language + template-definition/version hash + params digest together so the user cannot approve params against definition X while Meta receives definition Y. The phone renders the final human-readable preview.
+- **Acceptance test:** identical params under different definitions produce different bound digests; a param set encodes to a byte-exact vector reproduced in Swift and Python; a definition-version drift invalidates a prior approval.
+- **Source/finding:** #17 — `template_params_sha256` undefined (phase4:32, phase5 Task 4).
+
+**#18 — Resolve MCP transport + add the OpenAI connectivity gate**
+- **Status:** BINDING · **Applies to:** 2a + 2b
+- **Correction:** Choose one transport: a **Streamable HTTP MCP server bound to 127.0.0.1**, tunnelled explicitly when needed (not "stdio" and "loopback" both). Add Phase 2b: ChatGPT does not connect to arbitrary local MCP servers — verify product eligibility, the Secure-MCP-Tunnel / remote-MCP route, read/write tool support, auth, and privacy disclosure with evidence. Responses-API remote-MCP is the fallback route.
+- **Acceptance test:** the server declares a single transport; a Phase 2b findings entry records the confirmed OpenAI route with evidence before any live ChatGPT connection.
+- **Source/finding:** #18 — stdio vs loopback + missing OpenAI phase (phase2:5, architecture).
+
+**#19 — Loopback is not an auth boundary**
+- **Status:** BINDING · **Applies to:** 2a
+- **Correction:** Any local process running as the user can reach a loopback port. Add local auth: a random bearer token stored in Keychain, or a Unix-domain socket with restrictive filesystem permissions.
+- **Acceptance test:** an MCP request without the token / socket permission is refused; the token lives only in Keychain (never disk/env/logs).
+- **Source/finding:** #19 — loopback not auth (phase2 architecture).
+
+**#20 — Document the `readOnlyHint` vs audit-write exception**
+- **Status:** BINDING · **Applies to:** 2a
+- **Correction:** Read tools annotated `readOnlyHint:true` still append to `control.audit_log`. Document the semantic exception clearly (no domain/application-state mutation; audit append is outside the tool's logical environment). Do not claim a perfect literal match.
+- **Acceptance test:** the surface doc states the audit-write exception; read-only tools perform no domain mutation.
+- **Source/finding:** #20 — readOnlyHint vs audit (phase2 constraints).
+
+**#21 — Audit argument hashes must be keyed HMACs**
+- **Status:** BINDING · **Applies to:** 2a
+- **Correction:** Use `HMAC-SHA256(audit_key, canonical_args)` with `audit_key` in Keychain, not plain `SHA256(args)` (low-entropy queries like a contact name are dictionary-guessable).
+- **Acceptance test:** identical calls correlate via equal HMACs; the audit key is Keychain-only; a known plaintext query cannot be confirmed from the log without the key.
+- **Source/finding:** #21 — `SHA256(args)` leak (phase2 Task 3).
+
+**#22 — Wrap every attacker-controlled string, not just bodies**
+- **Status:** BINDING · **Applies to:** 2a
+- **Correction:** The untrusted wrapper must cover contact `display_name`, `push_name`, group subject, file name, caption, quoted text, remote template names, and system text — not only message bodies.
+- **Acceptance test:** each field is returned inside the untrusted wrapper; a display-name injection payload is wrapped, not surfaced as trusted text.
+- **Source/finding:** #22 — only bodies wrapped (phase2 Task 1). INV-CONTENT.
+
+**#23 — Hard MCP privacy ACL (`LOCAL_ONLY`)**
+- **Status:** BINDING · **Applies to:** 2a
+- **Correction:** Add `conversation.mcp_visibility in {ALLOW_MCP, LOCAL_ONLY}`, set only by CLI/phone, never by MCP. The server never returns `LOCAL_ONLY` conversations regardless of model intent. (Does not solve dynamic scope; it is a real hard fence.)
+- **Acceptance test:** a `LOCAL_ONLY` conversation is never returned by any read tool including a search-all; MCP has no path to change visibility.
+- **Source/finding:** #23 — no hard privacy fence (phase2, §5.4). INV-CONTENT.
+
+**#24 — State the OpenAI plaintext-custody boundary as an invariant**
+- **Status:** BINDING · **Applies to:** 2b (+ spec)
+- **Correction:** MCP returns only the minimum selected excerpts required for the request; using ChatGPT with WhatsVault intentionally discloses those selected plaintext excerpts to the configured LLM service. Distinct from BSP archival; still a disclosure boundary — say so.
+- **Acceptance test:** the spec/master carries the disclosure invariant; the read layer returns minimal excerpts, not whole conversations by default.
+- **Source/finding:** #24 — OpenAI custody unstated. INV-CONTENT.
+
+**#25 — Importer cannot infer `direction` (needs `self_participant_id`)**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** Add explicit `self_participant_id` operator input at dry-run/import; never assume "You" or a saved display name. Record it in batch provenance.
+- **Acceptance test:** import without a resolved self-participant either refuses or leaves direction explicitly unknown (never guessed); the chosen self-participant is stored on the batch and drives direction.
+- **Source/finding:** #25 — direction unknowable (phase1b Task 5). INV-IMPORT.
+
+**#26 — Imported messages need a link to their provisional sender**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** Participants are deliberately unlinked to real contacts, so add `message_import_senders(message_id, import_participant_id)` or a nullable `sender_import_participant_id` via migration.
+- **Acceptance test:** each imported message resolves to its provisional import participant without touching `contacts`.
+- **Source/finding:** #26 — no message->participant link (phase1b Task 1). INV-IMPORT.
+
+**#27 — DST resolutions input (per-location, not global)**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** `import_batch(...)` needs a `dst_resolutions` input keyed by a stable source location (source ordinal or byte offset) carrying per-instant fold/nonexistent resolutions. No global fold switch.
+- **Acceptance test:** a file with a DST-ambiguous instant imports only when a matching per-location resolution is supplied; without it, refusal.
+- **Source/finding:** #27 — no DST resolution input (phase1b:142, Task 5). INV-IMPORT.
+
+**#28 — Fake-header ambiguity: surface, never forge (refined)**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** A body line that looks like a header can be information-theoretically ambiguous. Do not promise automatic detection: preserve source byte offsets, surface known-suspicious patterns, permit operator resolution, and name this as a residual limitation of plaintext exports. Reconcile the two current rules ("matches header regex -> new message" vs "looks-like-header inside a message -> ambiguous_boundary") so ambiguity is always surfaced. (The plan already preserves offsets and flags `ambiguous_boundary` — this tightens the wording and names the residual.)
+- **Acceptance test:** an ambiguous line is flagged with offsets for operator resolution and never silently split into a fabricated participant message; the residual is documented.
+- **Source/finding:** #28 — fake-header ambiguity (phase1b Task 3). Refined.
+
+**#29 — Import-provenance tables need explicit (im)mutability rules**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** Batches immutable; observations deletable only via undo; participant `link_state` transitions logged and reversible; source-artifact rows immutable. Define the allowed transitions rather than leaving tables generally mutable.
+- **Acceptance test:** a direct UPDATE to a frozen provenance column is denied; undo deletes observations via the sanctioned path; a link/unlink is an audited, reversible transition.
+- **Source/finding:** #29 — import tables unfrozen (phase1b Task 1). INV-IMPORT / INV-ATREST.
+
+**#30 — Atomic import success contract for the source artefact**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** Order: seal source artefact -> fsync/atomic rename -> verify hash -> BEGIN import transaction -> record artifact reference -> commit observations. An import never reports success if its forensic artefact hasn't durably landed. Use a separate source-artifact key/version; bind batch/source hash as AEAD AAD.
+- **Acceptance test:** a crash before the artefact durably lands leaves no "successful" batch; every successful batch has a hash-verified, durably-stored source artefact.
+- **Source/finding:** #30 — artifact durability ordering (phase1b Task 5/6). INV-IMPORT.
+
+**#31 — Expand hostile-ZIP matrix; fix the "MIME-sniff" claim (refined)**
+- **Status:** BINDING · **Applies to:** 1b
+- **Correction:** Add tests for zero compressed size, ZIP64, encrypted archives, backslash traversal, absolute Windows paths, symlinks, declared-size lies, a streaming expanded-byte cap, permissions, and a `0700` temp-extraction dir. Fix the sniffing claim: `mimetypes` is extension guessing, not sniffing — use a real content sniffer (named dependency) or drop the sniffing claim.
+- **Acceptance test:** each listed hostile shape is refused; extraction is capped by streamed bytes (not just declared size); temp dir is `0700`; the sniffing claim matches the implementation.
+- **Source/finding:** #31 — ZIP handling incomplete (phase1b Task 7, :143). Refined. INV-IMPORT.
+
+**#32 — Two MATCH forms (lexical + compact)**
+- **Status:** BINDING · **Applies to:** 1c
+- **Correction:** The two indexes hold different representations, so compile two MATCH forms — `compile_lexical(q)` (spaces preserved) and `compile_compact(q)` (separators removed) — or `compile_match(q, tier)`. The normaliser already returns both forms. Compact fallback keeps the >=3-char rule and simple term/phrase semantics only, not every lexical operator.
+- **Acceptance test:** "mi ravam" compiles to a lexical MATCH finding the spaced form and a compact MATCH finding the joined form; compact rejects <3-char terms and complex operators.
+- **Source/finding:** #32 — single `compile_match` (phase1c:97-98). INV-SEARCH.
+
+**#33 — Time filters respect uncertainty-interval overlap**
+- **Status:** BINDING · **Applies to:** 1c
+- **Correction:** Use overlap, not `ts_lower_ms >= from`: for evidence `[lower, upper)` and request `[from, to)`, filter `ts_upper_ms_exclusive > from AND ts_lower_ms < to`.
+- **Acceptance test:** a minute/day-precision message whose interval straddles a range boundary is correctly included/excluded by overlap (a lower-bound-only filter would drop it).
+- **Source/finding:** #33 — lower-bound filter (phase1c:96). INV-SEARCH.
+
+**#34 — Per-codepoint snippet span mapping (refined)**
+- **Status:** BINDING · **Applies to:** 1c
+- **Correction:** Make snippet mapping per-codepoint/span, expanding the already-correct explicit-index-map design (which already tests a length-changing tatweel case). "Token boundary" granularity is too coarse for case-fold expansion (ss) and combining marks. Map each emitted normalised codepoint/span back to its original span and merge ranges. Test NFC composition, combining marks, stripped tatweel, Persian ZWNJ, case-fold expansion, emoji, and Swift/Python surrogate-index independence. `display_text == text_original` always.
+- **Acceptance test:** for each enumerated case the highlighted span indexes the ORIGINAL text exactly; `display_text` is byte-identical to `text_original`.
+- **Source/finding:** #34 — span mapping granularity (phase1c:110-112). Refined.
+
+**#35 — Wire live ingest into the search index**
+- **Status:** BINDING · **Applies to:** 3c (+1c)
+- **Correction:** A newly committed live message must become searchable via post-commit indexing or a durable/periodic stale-row reindex. Because search is derived, ACK must not wait on indexing.
+- **Acceptance test:** a message ingested via the consumer is found by search after commit; ACK timing is independent of indexing; a missed index row is repaired by the sweep.
+- **Source/finding:** #35 — ingest not wired to index (phase3 vs phase1c). INV-SEARCH.
+
+**#36 — `list_templates` before its table exists**
+- **Status:** BINDING · **Applies to:** 2a (+5c)
+- **Correction:** Resolve the dependency inversion (tool in Phase 2, table in Phase 5): move the empty template-catalogue schema earlier (preferred) so the Phase 2 tool reads a real empty table, or return explicit `FEATURE_NOT_INITIALISED` until the migration exists.
+- **Acceptance test:** `list_templates` on a fresh install returns an empty catalogue (or `FEATURE_NOT_INITIALISED`), never a missing-table error.
+- **Source/finding:** #36 — list_templates before table (phase2 Task 2 vs phase5 migration 0002).
+
+**#37 — Decrypt classification must use key-health, not cohort size alone**
+- **Status:** BINDING · **Applies to:** 3c
+- **Correction:** A single-message batch after a bad-key deploy is indistinguishable from isolated poison under cohort-only logic. Use known-good key health (has this key/version decrypted recently? do siblings decrypt?) before calling a failure isolated poison; otherwise `SYSTEMIC_SUSPECT` -> circuit-break, no ACK.
+- **Acceptance test:** a lone AEAD failure on a key with no recent successful decrypt -> SYSTEMIC (no ACK, no poison); a lone failure amid a healthy key's successes -> isolated poison (DLQ+ACK).
+- **Source/finding:** #37 — cohort-only classify (phase3:63). INV-CIPHERTEXT.
+
+**#38 — Local DLQ schema for key retirement; no plaintext hash on decrypt-fail**
+- **Status:** BINDING · **Applies to:** 3b / 3c
+- **Correction:** The local DLQ must carry `recipient_key_id, crypto_version, envelope_version, ciphertext_sha256` (needed by #39) and must **not** require `payload_sha256` on the decrypt-failure path (no plaintext exists). This also fixes the internal contradiction where `keys.retire` checks DLQ key-references against a schema that stores no key id.
+- **Acceptance test:** a decrypt-failure DLQ row stores key id + ciphertext hash and no plaintext hash; `keys.retire` can enumerate DLQ rows referencing a given key.
+- **Source/finding:** #38 — DLQ schema gaps (phase3:61,104). INV-CIPHERTEXT.
+
+**#39 — Key retirement is time/state-based, not queue-content-scanning**
+- **Status:** BINDING · **Applies to:** 3b
+- **Correction:** Do not scan Queue contents. Rotate by time/state: create key_02 -> edge seals only to key_02 -> key_01 RETIRING -> wait beyond max main-queue retention -> drain edge DLQ -> resolve/rewrap local DLQ -> verify no local references -> retire key_01. Optionally keep an explicit edge ledger keyed by `recipient_key_id`.
+- **Acceptance test:** retirement proceeds via the time/state protocol without querying queue contents; retire refuses while any local DLQ / edge reference remains.
+- **Source/finding:** #39 — `queue_refs_fn` unrealistic (phase3:104). INV-CIPHERTEXT.
+
+**#40 — Live ingest must advance the control.db window projection**
+- **Status:** BINDING · **Applies to:** 3c
+- **Correction:** Ingest must advance the send-authoritative `control.db.last_window_eligible_inbound_at`, not only `vault.messages.window_eligible`. Reuse the existing Phase 1a mechanism (`doctor.advance_window`, rebuildable via `rebuild_window_from_evidence`): after the evidence commit, reconcile the projection idempotently and crash-recoverably; duplicate delivery permits re-reconciliation; doctor can rebuild it.
+- **Acceptance test:** an ingested live inbound advances the control.db projection; a duplicate delivery does not double-advance; doctor rebuilds the projection from evidence after simulated corruption.
+- **Source/finding:** #40 — projection not advanced (phase3 vs INV-SENDPOLICY). INV-SENDPOLICY.
+
+**#41 — Define concrete circuit-breaker state**
+- **Status:** BINDING · **Applies to:** 3c
+- **Correction:** Make the breaker a concrete operational record: where it lives (control/ops record), what trips it (systemic decrypt failure, disk-full), how it resets (manual vs automatic), and what health signal alerts. `doctor.check_ingest` reads this state.
+- **Acceptance test:** a systemic failure trips a persisted breaker that halts leasing; reset follows the defined path; doctor reports breaker state.
+- **Source/finding:** #41 — circuit-breaker undefined (phase3:19,106).
+
+**#42 — `SYSTEM_EVENT` needs a defined destination**
+- **Status:** BINDING · **Applies to:** 3c
+- **Correction:** Either create a `system_events` table or state explicitly that system events live solely in immutable `ingest_events` until a projection is needed. No family may have an undefined domain row.
+- **Acceptance test:** a `SYSTEM_EVENT` commits to its declared destination; the plan states which; doctor/parity checks account for it.
+- **Source/finding:** #42 — SYSTEM_EVENT destination (phase3:47).
+
+**#43 — `whatsvault-meta` is a credential-holding process, not a library**
+- **Status:** BINDING · **Applies to:** 4d
+- **Correction:** Build `apps/meta/daemon.py` holding the Keychain token, exposing narrow authenticated IPC (Unix-domain socket, restrictive perms): `execute_approved_write(...)`, `materialise_media(attachment_id)`, `health()`. No arbitrary Graph POST / arbitrary URL GET. MCP/ingest/scheduler hold no token.
+- **Acceptance test:** only the daemon loads the token; the IPC exposes exactly those three verbs; a caller cannot issue an arbitrary Graph request; other processes have no credential path.
+- **Source/finding:** #43 — daemon vs library (phase4 Task 9). INV-SENDPOLICY.
+
+**#44 — Pin the Meta Graph API version**
+- **Status:** BINDING · **Applies to:** 4d (value via Phase 0)
+- **Correction:** `META_GRAPH_VERSION = v<XX.X>` — configurable but pinned; never code against an implicit current version. The concrete value is a Phase 0 finding (see Deferred-Decision Register).
+- **Acceptance test:** the provider uses a pinned, configurable version constant; no request path uses an unpinned/implicit version.
+- **Source/finding:** #44 — unpinned Graph version (phase4:141).
+
+**#45 — Persistent scheduler (`scheduled_jobs` + `job_runs`)**
+- **Status:** BINDING · **Applies to:** 5b
+- **Correction:** Persist `scheduled_jobs(job_id, conversation, timezone, schedule, generation_mode, conditions, enabled, max_lateness, last_run, next_run)` + `job_runs` (crash/audit). Process restart must not silently drop schedules.
+- **Acceptance test:** a scheduled job survives a restart (reloaded from `scheduled_jobs`); each firing records a `job_runs` row; restart mid-window neither loses nor duplicates the schedule.
+- **Source/finding:** #45 — no scheduler persistence (phase5 Task 3).
+
+**#46 — Pin APScheduler's major version**
+- **Status:** BINDING · **Applies to:** 5b
+- **Correction:** Lock the exact audited version (stable 3.x line; 4.x has changed APIs) in `requirements.in`/lock; don't write against "APScheduler" generically (coalesce/misfire semantics differ across generations).
+- **Acceptance test:** the lock pins an exact APScheduler version; scheduler code targets that generation's API.
+- **Source/finding:** #46 — unpinned APScheduler (phase5 Task 3).
+
+**#47 — Scheduler AI policy for V1 (no autonomous LLM)**
+- **Status:** BINDING · **Applies to:** 5b
+- **Correction:** V1 allows static/user-authored scheduled drafts and local deterministic templates only; **no** automatic LLM generation (a new autonomous disclosure surface) unless the user explicitly enables AI-generation for a named job and scope.
+- **Acceptance test:** a V1 scheduled job produces a static/template draft without invoking any LLM; any AI-generation path requires an explicit per-job opt-in.
+- **Source/finding:** #47 — auto-LLM disclosure (phase5 §11).
+
+**#48 — Build the push/notification subsystem**
+- **Status:** BINDING · **Applies to:** 5e
+- **Correction:** Implement content-free push with rate limits (approval notifications, DLQ alerts). Name the actor: APNs (paid Apple membership) or Pushover/ntfy (privacy/dependency actors even with content-free payloads). Define rate limits.
+- **Acceptance test:** a push carries no message content; rate limits are enforced; the chosen provider and its privacy properties are documented.
+- **Source/finding:** #48 — push unimplemented (phase4/5 references).
+
+**#49 — Narrow the "paid Apple Developer" claim**
+- **Status:** BINDING · **Applies to:** 4f
+- **Correction:** Secure Enclave app core + local device testing can begin under a **free Personal Team** (with limits); paid membership is required for APNs and distribution. Don't treat paid membership as a blocker for SE/core development.
+- **Acceptance test:** the plan distinguishes free-team SE/core dev from paid-membership APNs/distribution; SE keygen/signing is developed/tested before paid enrolment.
+- **Source/finding:** #49 — Apple-Dev overbroad (phase4:4,126).
+
+**#50 — Fix the Phase 6 retention-gap overclaim**
+- **Status:** BINDING · **Applies to:** 6 (+3b)
+- **Correction:** Either (preferred) maintain a durable privacy-preserving ingress ledger/high-water counter so loss is accountable and C5 is testable; or reword C5 to claim only that impending retention loss is warned and post-expiry state is honestly reported as potentially incomplete. Do **not** claim every expired event is detected (queue metrics are best-effort).
+- **Acceptance test:** either a durable ingress ledger detects a simulated gap, or C5 claims only warning + honest incompleteness — not universal detection.
+- **Source/finding:** #50 — C5 vs optional counter (phase6 C5, phase3 Task 5).
+
+**#51 — Phase 6 D2 must test device sealing, not TLS**
+- **Status:** BINDING · **Applies to:** 6
+- **Correction:** Inspect the **application payload before TLS** at the relay/Cloudflare boundary: plant a `WV_DEVICE_SEAL_SENTINEL`, prove the relay outbound application body lacks it and the iPhone recovers it after device decryption. (The real seal test already exists in phase4 Task 7; D2's wording is the fix.)
+- **Acceptance test:** the pre-TLS application body contains only ciphertext (sentinel absent); the device recovers the sentinel after unsealing.
+- **Source/finding:** #51 — D2 tests TLS (phase6 D2). INV-DEVICE-SEAL.
+
+**#52 — `temp_store=MEMORY` + filesystem hardening**
+- **Status:** BINDING FOLLOW-UP (do not rewrite shipped history) · **Applies to:** 1a
+- **Correction:** Add `PRAGMA temp_store = MEMORY` and assert it at runtime (verified absent this session: live `PRAGMA temp_store` = 0, and `temp_store` appears nowhere in `src/`). Add filesystem hardening: vault dir `0700`, db/blob files `0600`, Unix-socket dir `0700`, `umask 077`. Ship as a corrective security patch (its own small plan) before any live private data.
+- **Acceptance test:** a fresh connection reports `temp_store` = 2 (MEMORY); file/dir modes match; a runtime assertion fails closed if `temp_store` isn't MEMORY.
+- **Source/finding:** #52 — temp_store/file perms (empirically verified). INV-ATREST.
+- **Target:** next maintenance/security patch before live private data.
+
+**#53 — SQLCipher provenance: pin it or state it honestly**
+- **Status:** BINDING FOLLOW-UP · **Applies to:** 1a
+- **Correction:** The master cannot claim both generic pip install and guaranteed Homebrew linkage (`sqlcipher3` now publishes macOS ARM64 wheels; a fresh install may pick a wheel; the Python lock can't pin the C library). Decide: **Option A** — accept the audited wheel and state it honestly; or **Option B** — force source + pin the C dependency (Brewfile + `--no-binary` + a runtime `cipher_version`/linkage assertion). Record the choice (Deferred-Decision Register). Verified this session: `sqlcipher3 0.6.2` -> `cipher_version 4.12.0 community`.
+- **Acceptance test:** the build doc's linkage claim matches reality; a runtime assertion pins the expected `cipher_version`/provenance per the chosen option.
+- **Source/finding:** #53 — unreproducible linkage claim (preamble build-facts). INV-ATREST.
+- **Target:** next maintenance/security patch before live private data.
+
+**#54 — Rewrite INV-CONTENT to remove the internal contradiction**
+- **Status:** BINDING · **Applies to:** spec + 2a
+- **Correction:** Split INV-CONTENT into two strengths. **Hard boundary:** retrieved content cannot create write authority, create/modify policy, access credentials, or bypass server-side ACLs. **Orchestration property:** retrieved content should not influence the model to widen retrieval scope or invoke additional read tools; this is not cryptographically enforceable absent separately authorised retrieval scopes.
+- **Acceptance test:** the invariant text carries the two-strength split; the hard boundary is enforced by the surface; the orchestration property is stated as non-enforceable.
+- **Source/finding:** #54 — INV-CONTENT contradiction (invariants). INV-CONTENT.
+
+**#55 — Master is a roadmap, not a directly-executable plan**
+- **Status:** BINDING (applied in this revision) · **Applies to:** whole master
+- **Correction:** Resolved by the Execution rule at the top of this document: each unshipped phase gets a standalone full-TDD plan generated just-in-time, passing a fresh consistency/ambiguity review before execution, inheriting this ledger.
+- **Acceptance test:** no phase is executed directly from this master; each execution is preceded by a standalone JIT plan that inherits this ledger.
+- **Source/finding:** #55 — master not executable (plan-fidelity across phases).
+
+**#56 — Build the `whatsvault` CLI**
+- **Status:** BINDING · **Applies to:** 5x
+- **Correction:** Build the CLI as a named work item: devices enroll/revoke, templates sync, import/undo/reparse, DLQ inspect/retry, keys retire, doctor, possible-match resolve. Several invariants depend on CLI-only privileged paths no phase currently builds.
+- **Acceptance test:** each referenced CLI verb exists and is covered; privileged operations (enrol, retire, mint-initiate) have no MCP path.
+- **Source/finding:** #56 — CLI absent (cross-phase).
+
+**#57 — macOS service supervision (launchd)**
+- **Status:** BINDING · **Applies to:** 5x
+- **Correction:** launchd units for MCP, ingest consumer, meta daemon, dispatcher, approval relay, scheduler, Cloudflare Tunnel — with crash restart, logs, sleep/wake, health, file permissions, service identities.
+- **Acceptance test:** each long-running component has a launchd unit; a killed component restarts; sleep/wake resumes ingest; logs carry no plaintext/secrets.
+- **Source/finding:** #57 — no deployment layer (cross-phase).
+
+**#58 — Backup / disaster-recovery policy (no silence)**
+- **Status:** BINDING · **Applies to:** 5x
+- **Correction:** Decide and implement a backup/DR policy: either secure key recovery/backup, or an explicit frozen statement that Mac/Keychain loss permanently destroys the vault. Test backup restore against SQLCipher/WAL consistency. (The recovery-model choice is in the Deferred-Decision Register.)
+- **Acceptance test:** the DR posture is explicitly stated; if backups exist, a restore reproduces a consistent vault; if not, the permanent-loss statement is documented and surfaced.
+- **Source/finding:** #58 — backup/DR absent (cross-phase). INV-ATREST.
+
+**#59 — Persist `POSSIBLE_MATCH` + human resolution workflow**
+- **Status:** BINDING · **Applies to:** 5d
+- **Correction:** Add a `reconciliation_candidates` table + human resolution workflow (resolve/dismiss/abandon), audited. Reconciliation never auto-resolves ambiguous matches.
+- **Acceptance test:** an ambiguous status event creates a durable candidate row; a human resolve/dismiss transitions it with an audit entry; no auto-attribution of same-minute sends.
+- **Source/finding:** #59 — POSSIBLE_MATCH not persisted (phase5 Task 5).
+
+**#60 — Callback-correlation column in the status schema**
+- **Status:** PHASE-0-CONTINGENT · **Applies to:** 5d / 3c
+- **Correction:** The normalised `MESSAGE_STATUS` schema must carry `biz_opaque_callback_data` in an explicit queryable column (not trapped in raw JSON), since deterministic reconciliation depends on it. Treat the feature as contingent until Phase 0 V8 proves it on direct Meta; if V8 fails, reconciliation is manual-only (R7).
+- **Acceptance test:** a status event's callback data lands in a queryable column; reconciliation uses it deterministically when present; the manual-only fallback is defined for the V8-fails case.
+- **Source/finding:** #60 — callback not in status schema (phase5 Task 5, phase0 V8).
+
+---
+
+## Cross-phase invariant index
+
+Which corrections cluster under each invariant — run this when generating a phase plan to catch omissions.
+
+```text
+INV-SENDPOLICY -> #11, #12, #40, #43
+INV-HARDWARE   -> #5, #6, #7, #8
+INV-CIPHERTEXT -> #1, #3, #4, #38, #39
+INV-IMPORT     -> #25-#31
+INV-SEARCH     -> #32-#35
+INV-CONTENT    -> #18-#24, #54
+INV-ATREST     -> #52, #53, #58
+```
+
+---
+
+## Deferred-Decision Register
+
+These are genuinely unresolved decisions, **not** defects with known fixes. They stay visibly open here rather than being smuggled into the corrections ledger as if decided. Each must be resolved (with evidence) before the phase it blocks is activated.
+
+- **DD1 — Meta Graph API version.** Which pinned `META_GRAPH_VERSION`? _Blocks:_ 4d activation (#44). _Resolved by:_ Phase 0 (pin the tested version with a primary-doc quote).
+- **DD2 — `biz_opaque_callback_data` availability on direct Meta.** Does the direct Cloud API echo it into the status webhook? _Blocks:_ deterministic status reconciliation vs manual-only R7 (#60). _Resolved by:_ Phase 0 V8.
+- **DD3 — Backup / key-recovery model.** Recoverable encrypted backup, or frozen "Mac/Keychain loss = permanent vault loss"? _Blocks:_ 5x backup/DR (#58). _Resolved by:_ an explicit design decision recorded here before 5x.
+- **DD4 — OpenAI/ChatGPT connectivity route.** Secure MCP Tunnel, remote MCP, or Responses-API remote-MCP? _Blocks:_ 2b activation (#18, #24). _Resolved by:_ Phase 2b connectivity verification with evidence.
 
 ---
 
@@ -1077,6 +1505,28 @@ def test_every_tool_is_read_only():
 - [ ] **F2 (R2)** — model a compromised-Mac scenario; confirm the boundary claim (can subvert display/time/enrolment, cannot forge a signature or extract the SE key) holds as stated, no more.
 - [ ] **F3 (R3)** — attempt device enrolment via MCP / non-CLI paths → no path; confirm enrolment integrity assumes an uncompromised Mac at enrolment (stated, not solved).
 - [ ] **F4 (R7)** — if Phase 0 V8 failed, confirm the INDETERMINATE fallback behaves as decided (manual-only), not silently.
+
+### G. Cross-boundary integration attacks (2026-08-27 gauntlet — ledger-driven)
+
+These attack the *assembled* seams the per-phase gates can't see. Each references the Corrections Ledger entry it exercises.
+
+- [ ] **G1 — oversized webhook -> R2 spill (#3).** A >128 KB sealed body is stored in R2, a pointer enqueued; the Mac reconstructs, verifies `ciphertext_sha256`, commits, ACKs, deletes the object. A normal body never touches R2.
+- [ ] **G2 — multi-event webhook fan-out (#2).** One POST with a message + two statuses -> three atomic events with independent dedupe/dispositions; ACK only after all children are durable; the edge Worker did no semantic parsing.
+- [ ] **G3 — edge DLQ left without a consumer (#4).** Confirm the drainer exists and the 14-day net holds — not a silent ~4-day loss.
+- [ ] **G4 — wrong sealing key, single-message batch (#37).** A lone AEAD failure on a key with no recent successful decrypt -> `SYSTEMIC` (circuit-break, no ACK), never poison+ACK.
+- [ ] **G5 — approval-envelope uniqueness pre-emption (#14).** A structurally-invalid envelope cannot occupy the uniqueness slot; the device-sealed nonce stays secret; the sender re-verifies regardless. (Defence-in-depth, not a claimed-closed hole.)
+- [ ] **G6 — enrolment MITM + key substitution (#5, #6).** Substituting either the signing or the agreement public key is rejected by the challenge binding; no non-CLI path reaches the pin.
+- [ ] **G7 — MCP loopback without auth (#19).** A request without the Keychain bearer token / socket permission is refused.
+- [ ] **G8 — `LOCAL_ONLY` MCP ACL bypass (#23).** A `LOCAL_ONLY` conversation is never returned, including via a search-all, regardless of injected body content.
+- [ ] **G9 — capability for chat A + wamid from chat B (#9).** Rejected without consuming the grant; outbound-wamid targets rejected.
+- [ ] **G10 — legitimate Persian ZWNJ in an approval body (#15).** A body using `U+200C` inside Persian is `safe`, not flagged; a bidi-override injection still is.
+- [ ] **G11 — template definition drift (#17).** An approval bound to definition X cannot be redeemed against definition Y.
+- [ ] **G12 — crash after the `SUBMITTING` commit (#13).** Recovered to `INDETERMINATE`; never silent loss, never blind resend.
+- [ ] **G13 — restart with an unprocessed approval envelope (#13).** Drives exactly one dispatch.
+- [ ] **G14 — R2 orphan / key-retire while referenced (#3, #39).** An orphaned R2 ciphertext is detected and cleaned; `keys.retire` refuses while an R2/DLQ object references the key.
+- [ ] **G15 — OpenAI tunnel unavailable (#18, #24).** Degrades safely; no plaintext leaks; the connectivity route is the documented one.
+- [ ] **G16 — scheduler restart / misfire (#45, #47).** Schedules survive restart; a coalesced misfire yields at most one draft; V1 invokes no autonomous LLM.
+- [ ] **G17 — backup restore with a missing/wrong Keychain key (#58).** Behaves per the frozen DR posture (recover, or fail closed) — never a silent partial vault.
 
 ## Deliverables
 
