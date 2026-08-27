@@ -27,9 +27,9 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 2a   Authenticated local MCP                        SHIPPED (160 tests green)
 2b   ChatGPT/OpenAI connectivity gate
 
-3a   Sealed-envelope protocol
-3b   Edge Worker + Queue + oversized R2 spill + edge DLQ
-3c   Local ingest + fan-out + policy-projection reconciliation
+3a   Sealed-envelope protocol                     SHIPPED (crypto + golden vector)
+3b   Edge Worker + Queue + oversized R2 spill + edge DLQ   [Phase-0-gated contract recorded]
+3c   Local ingest + fan-out + policy-projection reconciliation   SHIPPED (188 tests green)
 
 4a   Canonical decision + shared policy engine
 4b   Two-key device identity + enrolment protocol
