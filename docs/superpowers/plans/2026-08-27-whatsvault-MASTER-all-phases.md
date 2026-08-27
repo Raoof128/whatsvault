@@ -31,11 +31,11 @@ Sub-phases are the real independent trust boundaries surfaced by the 2026-08-27 
 3b   Edge Worker + Queue + oversized R2 spill + edge DLQ   [Phase-0-gated contract recorded]
 3c   Local ingest + fan-out + policy-projection reconciliation   SHIPPED (188 tests green)
 
-4a   Canonical decision + shared policy engine
-4b   Two-key device identity + enrolment protocol
-4c   Approval relay + device sealing
-4d   Meta credential daemon + sender
-4e   Draft/MCP preparation surface
+4a   Canonical decision + shared policy engine     SHIPPED
+4b   Two-key device identity + enrolment protocol  SHIPPED (core)
+4c   Approval relay + device sealing                SHIPPED (core)
+4d   Meta credential daemon + sender                sender SHIPPED; daemon Phase-0-gated
+4e   Draft/MCP preparation surface                  SHIPPED (drafts core)
 4f   iOS approval app
 
 5a   Phone-signed capability protocol
