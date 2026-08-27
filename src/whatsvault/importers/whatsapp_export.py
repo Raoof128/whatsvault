@@ -165,3 +165,82 @@ def import_batch(vault_conn, text, *, source_sha256, date_format, tz_name, conve
 
     return {"batch_id": bat_id, "added": added, "observations": obs_count,
             "participants": len(set(r["sender"] for r in msgs))}
+
+
+# ---- Task 6: atomic source-artefact store + observation-aware undo + reparse ----
+import hashlib
+import os
+import tempfile
+import time
+
+from ..crypto import atrest
+
+_SRC_AAD_PREFIX = b"WHATSVAULT-IMPORT-SRC-V1\n"
+
+
+def store_source_artifact(dest_dir: str, source_sha256: str, raw_bytes: bytes, key: bytes) -> tuple[str, str]:
+    """#30 atomic contract: seal -> fsync -> atomic rename -> verify hash. The batch row
+    is only written afterwards with the returned (path, sealed_sha256), so a crash before
+    the artefact durably lands never yields a 'successful' import."""
+    aad = _SRC_AAD_PREFIX + source_sha256.encode("ascii")
+    sealed = atrest.seal_blob(key, raw_bytes, 0, aad)
+    sealed_sha = hashlib.sha256(sealed).hexdigest()
+    final = os.path.join(dest_dir, source_sha256 + ".wvblob")
+    fd, tmp = tempfile.mkstemp(dir=dest_dir)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(sealed)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, final)
+    except Exception:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+        raise
+    with open(final, "rb") as f:
+        on_disk = f.read()
+    if hashlib.sha256(on_disk).hexdigest() != sealed_sha:
+        raise IOError("source artefact hash mismatch after write")
+    return final, sealed_sha
+
+
+def undo_batch(vault_conn, batch_id: str) -> dict:
+    """Delete this batch's observations; delete a canonical message only when it now has
+    zero observations and no provider provenance (wamid IS NULL); drop the batch's
+    participants + conversation_sources row; stamp undone_at_ms. Never deletes the artefact."""
+    msg_ids = [r[0] for r in vault_conn.execute(
+        "SELECT message_id FROM message_import_observations WHERE batch_id=?", (batch_id,)).fetchall()]
+    try:
+        vault_conn.execute("DELETE FROM message_import_observations WHERE batch_id=?", (batch_id,))
+        deleted = 0
+        for mid in msg_ids:
+            remaining = vault_conn.execute(
+                "SELECT COUNT(*) FROM message_import_observations WHERE message_id=?", (mid,)).fetchone()[0]
+            wamid = vault_conn.execute("SELECT wamid FROM messages WHERE id=?", (mid,)).fetchone()
+            if remaining == 0 and wamid is not None and wamid[0] is None:
+                vault_conn.execute("DELETE FROM messages WHERE id=?", (mid,))
+                deleted += 1
+        vault_conn.execute("DELETE FROM import_participants WHERE import_batch_id=?", (batch_id,))
+        vault_conn.execute("DELETE FROM conversation_sources WHERE import_batch_id=?", (batch_id,))
+        vault_conn.execute("UPDATE import_batches SET undone_at_ms=? WHERE id=?",
+                           (int(time.time() * 1000), batch_id))
+        vault_conn.commit()
+    except Exception:
+        vault_conn.rollback()
+        raise
+    return {"batch_id": batch_id, "observations_deleted": len(msg_ids), "messages_deleted": deleted}
+
+
+def reparse(vault_conn, batch_id: str, key: bytes, dest_dir: str) -> dict:
+    row = vault_conn.execute(
+        "SELECT source_artifact_path, source_sha256, declared_date_format, declared_timezone, "
+        "self_participant_label FROM import_batches WHERE id=?", (batch_id,)).fetchone()
+    if not row:
+        raise ValueError("unknown batch")
+    path, ssha, fmt, tz, self_label = row
+    if not path:
+        raise ValueError("batch has no stored source artefact")
+    with open(path, "rb") as f:
+        sealed = f.read()
+    raw = atrest.open_blob(key, sealed, _SRC_AAD_PREFIX + ssha.encode("ascii"))
+    return dry_run(raw.decode("utf-8"), fmt, tz, self_participant_label=self_label)
