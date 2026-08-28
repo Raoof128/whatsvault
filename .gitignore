@@ -71,3 +71,6 @@ htmlcov/
 # Local agent/session scratch (not part of the project)
 # ---------------------------------------------------------------------------
 .remember/
+
+# Local agent working notes (not part of the project)
+CLAUDE.md

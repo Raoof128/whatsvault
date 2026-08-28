@@ -1,20 +1,147 @@
 # Changelog
 
-## Unreleased
+All notable changes to this project are documented here.
 
-- Raouf: `whatsvault init` + imported messages are now searchable — 379 tests green. Two blockers made the system unusable end to end. (1) There was NO way to create a vault: connection.provision_db() and the migration runner both existed and were tested, but nothing called them, and every entry point used open_existing(), which requires databases no code path could produce. ops/bootstrap.init_vault() creates the runtime layout (dirs 0700, database files 0600), both SQLCipher databases, runs all migrations, and provisions all four Keychain keys; it is idempotent and REFUSES to act when a database exists whose key is missing, because SQLCipher keys are unrecoverable and minting a fresh one there would strand the data permanently — the same asymmetry KeyStore.require already guards one level down. The reverse (key present, database absent) reuses the key rather than rotating it. (2) import_batch never wrote to the FTS index, so every imported message was invisible to search — and with live ingest Phase-0 gated, import is the only way data enters the vault. doctor's `search_missing` check had asserted this all along; nothing satisfied it, and unit tests masked it by calling index_message manually in fixtures. Indexing now happens inside the import transaction via a new public search.index.stage_message() seam (the caller owns the transaction), and a re-import stays idempotent with the fingerprint dedupe. Verified end to end: init -> import -> doctor 18/18 -> search returns hits -> MCP serves them redacted and untrusted-wrapped, with anonymous requests refused.
-- Raouf: all four launchd units now have real entry points (ledger #57) — 352 tests green, KNOWN_BROKEN emptied. Three daemons cannot yet do their job and the reasons differ: dispatcher is Phase 4 Task 7 and drives the unbuilt whatsvault-meta (Phase-0-gated); ingest's drain_once is complete but the only queue is FakeQueue (CloudflarePullConsumer is Gate-3 blocked); scheduler's fire() is complete and prepare-only but scheduled_jobs carries no body / recipient_wa_id / phone_number_id column, so drafts.prepare() cannot be called from a job row. Rather than fake them, each now starts, does its available work, emits one content-free structured record naming its exact blocker, and exits 0. Every plist moves from KeepAlive=true (restart after ANY exit, so a clean 'not operable' report hot-loops) to KeepAlive={SuccessfulExit:false} (crash restart preserved, clean exit stays stopped); ops.launchd.validate accepts both forms and rejects the inverted {SuccessfulExit:true}. New ops/daemon.open_databases funnels DB opening so an unprovisioned Keychain reports cleanly instead of raising KeyMissing and exiting non-zero — and distinguishes keys_not_provisioned from keystore_unavailable, since KeyMissing subclasses KeyStoreError and the operator actions differ. MCP gains the same preflight. apps/dispatcher/dispatch.py is created deliberately without any transmit path, asserted by an ast-based test (not a substring grep, which flagged its own docstring) that it references no send identifier, imports no network client, and does not import the sender.
-- Raouf: MCP operational readiness — doctor checks + key provisioning verb (ledger #18,#19,#21,#23) — 330 tests green, 3 xfails. `doctor.check_mcp(vault, control, ks=None)` reports the mcp_visibility fence column, audit_log presence and its append-only triggers, a LOCAL_ONLY conversation count (informational, never a failure), and — only when a keystore is supplied, so CI stays runnable without a Keychain — whether the daemon's two keys exist. New `whatsvault mcp-provision` verb creates whatsvault.mcp.token.v1 and whatsvault.mcp.audit.v1 if absent; it is idempotent and NEVER rotates (replacing the token would silently break a configured connector, replacing the audit key would orphan every existing audit HMAC), reports a present-but-wrong-length key rather than overwriting it, and withholds the token unless --reveal is passed because cli.main prints results to stdout and the launchd units capture stdout to a log file. Ctx gains an optional keystore; existing two-arg call sites are unaffected. An integration test runs the full operator loop over a real socket — provision, reveal, boot the daemon, and confirm the revealed token authenticates while anonymous and wrong tokens get 401.
-- Raouf: MCP launchd unit + console entry point (ledger #18,#57) — 316 tests green, 3 documented xfails. `apps/launchd/mcp.plist` already existed and passed structural validation, but was non-functional: it invoked `python3 -m apps.mcp.server` against a module with no `__main__` entry, so launchd would import, get an immediate exit, and restart forever under KeepAlive. Same defect confirmed across all four shipped plists (dispatcher targets `apps/dispatcher/dispatch.py`, which does not exist); the other three are recorded as xfail in tests/test_ops_launchd_runnable.py with a KNOWN_BROKEN list that may only shrink. Fixed for MCP: `__main__` guard added; plist switched off `/usr/bin/env python3` (system python has neither mcp nor sqlcipher3) to a venv interpreter; `apps/` is now packaged (`packages.find` looked only in src/, so an installed wheel contained no `apps` at all and both entry points would have failed); `whatsvault-mcp = apps.mcp.server:main` console script declared. Verified by building a real wheel (apps/* shipped, no test-package leakage, both console_scripts present) and by running `-m apps.mcp.server`, which now reaches main() and stops at the expected KeyMissing for an unprovisioned Keychain token. New tests assert plist targets are runnable, the MCP unit never uses system python, and it carries no public bind.
-- Raouf: MCP red-team pass (spec §5.5/§5.8, ledger #19/#21/#22/#23) — 310 tests green, 5 confirmed vulnerabilities found and closed, each pinned by an adversarial regression test in tests/adversarial/test_redteam_mcp.py. HIGH: `get_conversation_window` ignored the LOCAL_ONLY fence entirely, leaking exact last-inbound timestamps for conversations explicitly marked private (a fenced chat is now indistinguishable from an idle one). HIGH: `message_view` emitted `reply_to_wamid` raw, and a WhatsApp wamid base64-decodes to the counterparty E.164 in the clear — defeating mask_wa_id for every reply; replaced with a deterministic opaque `reply_to_ref` that preserves reply-chain correlation. MEDIUM: `min(limit, MAX_LIMIT)` was not a cap — SQLite reads LIMIT -1 as unbounded, so limit=-1 returned the entire table (260/260 messages, 261/261 conversations); now clamped at both ends. MEDIUM: the audit log recorded outcome='ok' unconditionally and before execution, so failed probes left a clean trail; now recorded after the call with the real outcome. LOW: duplicate Authorization headers were first-wins; ambiguous credentials now fail closed. Confirmed NOT vulnerable: constant-time token compare, 1MB-token DoS, null-byte/prefix/tab/empty-scheme token forgery, GET-method bypass, unauthenticated path traversal, conversation-existence oracle, LIKE-wildcard ACL escape, and plaintext query terms in the audit log.
-- Raouf: Phase 2b transport LIVE (ledger #18,#19) — 297 tests green. Streamable-HTTP MCP app now built and executed in CI, closing the gap where `build_server` was `pragma: no cover` and had never run. Auth moved off the tool signature into `mcp/http_auth.BearerAuthMiddleware`: a `bearer` tool parameter was being published in each tool's JSON schema, i.e. the server asked the *model* for the secret (regression-tested). Default-deny on every path, RFC-6750 `WWW-Authenticate` on 401, no input echoed in the body; DNS-rebinding protection with pinned `allowed_hosts` (loopback bind is not itself a boundary); `_json_safe` fixes a latent crash where HMACing a structured SearchQuery arg would raise mid-request. Live socket test asserts 401 anonymous / 401 wrong token / 401 wrong scheme / 200 authenticated MCP initialize / 421 forged Host. `main()` rewritten against the real API after the first draft referenced a non-existent `whatsvault.db.paths` and a 1-arg `KeyStore.require` — `test_main_symbols_resolve` now guards the no-cover entrypoint.
-- Raouf: Phase 5x-A CLI + macOS service operations complete (standalone plan, ledger #52,#56,#57) — 277 tests green, pip check clean. ops.paths (WHATSVAULT_HOME layout) + ops.fsperms (dirs 0700 / secret files 0600 / umask 077, chmod-after-create so umask-independent); conservative startup recovery (SUBMITTING->INDETERMINATE, scheduler reload, pending-approval surfacing, never resends); health/status aggregation + content-free structured logging that refuses body/caption/untrusted fields; process/credential topology invariants (exactly one Meta-token holder = whatsvault-meta, no process can approve); the whatsvault CLI with operations verbs (doctor/health/devices/dlq/keys/templates/reconcile/scheduler) proven disjoint from a forbidden approve/send/sign/mint set, with a structural test that the CLI source drives neither the sender write path nor the capability store (#56); launchd plists for ingest/dispatcher/scheduler/mcp with crash-restart + logs-under-logs/ + no inline secrets, plus a validator (#57). 5x-B backup/DR (#58) stays a FROZEN deferred decision (recoverable vs permanent-loss) recorded in docs/internal/findings; the shell-gate exit-code discipline is now a saved memory after the Phase-5 pipe-masks-exit incident.
-- Raouf: Phase 5 scheduler/capabilities/templates/status LOCAL CORE complete (standalone plan, ledger #7-#9,#17,#45-#48,#59-#60) — 257 tests green, pip check clean. Phone-signed WHATSVAULT-CAPABILITY-V1 grants the Mac verifies+stores but never mints (#7), with golden vectors (#8); mark_read binds its target (wamid exists/belongs-to-conversation/inbound/account) before consuming a grant (#9); control migration 0003 (templates, scheduled_jobs, job_runs, reconciliation_candidates) + WHATSVAULT-TEMPLATE-PARAMS-V1 binding name/language/definition_version/params so an approved-params-vs-sent-definition drift is impossible (#17); persistent prepare-only scheduler surviving restart with generation_mode banning autonomous LLM in V1 (#45,#46-pinned,#47); status reconciliation resolving INDETERMINATE via callback/wamid and persisting POSSIBLE_MATCH candidates for human resolution (#59), with a biz_opaque_callback_data column on the status schema (#60, Phase-0-contingent). list_templates now returns OK/empty (table exists) rather than the interim FEATURE_NOT_INITIALISED. Live template sync, APNs push (#48), and the meta daemon remain Phase-0/Apple-gated.
-- Raouf: Phase 4 approval-chain LOCAL CORE complete (standalone execution plan, ledger #5-#17,#43) — 232 tests green, pip check clean. Canonical WHATSVAULT-DRAFT-DECISION-V1 with a distinct target_message_wamid slot + golden vector (#10); P-256 verify with raw r||s and replay-identity=device+nonce framing (#16); shared P1-P7 policy engine imported by both prepare and sender (#11); control migration 0002 adding the device agreement key (#5) and target_message_wamid, recreating the draft-freeze trigger; two-key device identity + mutual-challenge enrolment that binds both keys (#5,#6); Persian-aware display guard that does not flag legitimate ZWNJ (#15); P-256 ECDH device seal + relay structural pre-check before the UNIQUE slot writing no APPROVED state (#14, INV-DEVICE-SEAL); sender permission-to-transmit with a ClockGuard owning clock trust (no clock_ok arg, #12), full §6.6 outcome matrix, nonce-consume replay gate, and SUBMITTING->INDETERMINATE crash recovery (#13); draft preparation running the shared policy. iOS Secure-Enclave app, whatsvault-meta credential daemon (#43), and live Meta are recorded structured contracts, Phase-0/Apple-gated, not built in CI.
-- Raouf: Phase 3 sealed-ingest LOCAL CORE complete (standalone execution plan, ledger #1-#4,#35,#37-#42) — 188 tests green, pip check clean. Sealed-envelope crypto with ALL AAD fields on the wire (fixes the original undecryptable format) + open-direction golden vector (#1); Mac-side webhook fan-out + six-family normaliser, window_eligible only for live inbound, seconds->ms, SYSTEM/HISTORY/UNKNOWN to ingest_events only (#2,#42); vault migration 0005 ingest_dlq (key/crypto metadata + ciphertext_sha256, no payload hash) + single-row circuit-breaker; key-health decrypt taxonomy - lone cold-key AEAD failure is SYSTEMIC not poison (#37,#38,#41); pull-consumer ACK-after-commit with per-child transactions, dedup-absorbed crash recovery, idempotent control window projection (#40) and post-commit search index that never blocks ACK (#35); key-retirement safety refusing while the DLQ references a key or the edge is not drained (#39), retention banding, doctor.check_ingest. cf-webhook Worker (HMAC/seal/R2-spill #3, Queue-DLQ config #4, X25519 build gate) is a recorded Phase-0-gated contract, not built in CI.
-- Raouf: Phase 2a authenticated local MCP complete (standalone execution plan, ledger #18-#24,#36) — 160 tests green, pip check clean. mcp 2.1.1 pinned; redaction + untrusted-wrapping for every attacker-controlled string (#22); vault migration 0004 mcp_visibility ACL with a CLI-only setter and a hard LOCAL_ONLY read fence (#23); read layer (search/get_messages/list_chats/get_message_status/get_conversation_window/list_templates) redacted, window-aware, LOCAL_ONLY-fenced, list_templates FEATURE_NOT_INITIALISED until Phase 5 (#36); loopback bearer-token auth with constant-time compare (#19) and keyed-HMAC audit not plain SHA256 (#21); server module with negative-surface CI assertion (REGISTERED disjoint FORBIDDEN incl. set_mcp_visibility), read_only_hint annotations with documented audit exception (#20), rewritten two-strength INV-CONTENT (#54) and OpenAI plaintext-disclosure invariant (#24); prompt-injection acceptance gate (attacker body wrapped, named tool absent, caller scope never crossed). Streamable-HTTP serving on 127.0.0.1 is Phase-2b-gated (#18).
-- Raouf: Phase 1c search + Persian normalisation complete (standalone execution plan, ledger #32-#35) — 137 tests green. Per-codepoint dual-output normaliser (Yeh/Kaf/hamza/digits fold, combining/tatweel/bidi strip, ZWNJ->sep) driving index, query, and snippet mapping from one core; vault migration 0003 with droppable search_documents + external-content fts_lexical (unicode61) and fts_compact (trigram), secure-delete at creation, index_message/reindex_stale/rebuild_all honouring external-content 'delete' discipline; injection-safe query AST with two MATCH forms (lexical + >=3-char compact), hard caps, SQL filters, and uncertainty-interval OVERLAP time filtering (not a lower bound); original-text snippets via per-codepoint span mapping (display_text byte-identical, internal tatweel/combining/ZWNJ inside the span); doctor check_search (FTS integrity, orphan/missing parity, normaliser staleness). Empirically verified FTS5 external-content + trigram + 'delete'/'delete-all' in sqlcipher3 4.12.0 before building.
-- Raouf: Phase 1b export importer complete (standalone execution plan, ledger #25-#31) — 109 tests green. imp id prefix + import-provenance schema (migration 0002) with immutability triggers and sanctioned mutation paths; locale-parameterised header grammar with whole-file date validation (day>12 disproves a month-reading family); conservative multiline/system/media parsing that surfaces ambiguous boundaries instead of forging messages; evidence fingerprints over ORIGINAL content (Yeh variants stay distinct); refuse-don't-guess writer requiring an explicit self-participant (mandatory: direction is NOT NULL), declared tz, format agreement, and per-instant DST resolutions, writing window_eligible=0/origin=manual_export evidence + provisional-sender observations + a non-write-capable conversation_sources row, deduping by import_fingerprint; atomic sealed source-artefact store (fsync+atomic-rename+verify) with observation-aware undo and forensic reparse; hostile-ZIP guard (traversal/backslash/symlink/streaming-byte-cap; extension-only, no MIME-sniff claim).
-- Raouf: open Phase 1a vault core (scaffold, deterministic SQLCipher install, capability gate).
-- Raouf: Phase 1a vault core complete (rev 2) — 67 tests green. Deterministic SQLCipher source build (sqlcipher3 0.6.2 / cipher 4.12.0) + locked deps, prefixed ULIDs (full entity registry), validated interval time model + DST classification, provision/require keystore + versioned attachment AEAD, eager-validated connections with at-rest encryption proof, numbered transactional migrations, vault schema with explicit window_eligible + checks, deny-by-default evidence immutability, domain-tagged dedupe, status lattice, control schema aligned to the signed byte contract, and a doctor that rebuilds the window from evidence (repairs forged values downward). Real secret scan + pip check gate.
-- Raouf: execution deviations from plan rev2 (folded back into the plan): (1) install drops `--no-binary=sqlcipher3` (that flag broke the build backend; the source build happens anyway as no wheel exists for macOS arm64); (2) capability gate probes connection-state pragmas (foreign_keys, secure_delete) BEFORE the FTS DDL probes, since foreign_keys cannot change once a transaction is open; (3) the migration runner lives in `db/migrations/__init__.py`, because a sibling `migrations.py` is shadowed by the `migrations/` package directory.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Entries record *what changed and why it mattered*. Where a change closes a
+security hole or corrects an earlier mistake, it says so — the detailed reasoning
+lives in the commit message, and the design rationale in
+[`docs/internal/`](docs/internal/).
+
+## [Unreleased]
+
+Nothing yet.
+
+## [0.1.0] — 2026-08-28
+
+First public release. The vault, search, and read-only MCP surface are complete
+and tested. The write path is implemented but deliberately inert, gated behind
+[Phase-0 verification](docs/internal/findings/2026-08-27-phase0-verification.md).
+
+### Added
+
+**Vault core**
+- SQLCipher-encrypted `vault.db` (evidence) and `control.db` (control plane), keyed
+  from the macOS Keychain, with eager key validation — `PRAGMA key` is lazy, so a
+  wrong key would otherwise fail only on first page read.
+- Forward-only migrations applied atomically; a failure rolls back and leaves the
+  schema version unchanged.
+- ULID-based prefixed identifiers, and triggers enforcing immutability of evidence
+  fields.
+
+**Import**
+- WhatsApp text-export parser with an explicit grammar, provenance tracking, and
+  exact undo by batch.
+- Time modelled as **uncertainty intervals** rather than instants: a `14:32` line
+  has minute precision in an unknown second, and DST-ambiguous or skipped local
+  times are classified rather than silently resolved.
+- Zip-bomb and path-traversal guards on archive input.
+
+**Search**
+- FTS5 over a normalised representation, tuned for mixed English/Persian text —
+  ZWNJ handling and Arabic/Persian character folding.
+- Two-tier ranking (lexical and compact) with snippet extraction.
+- The index is explicitly derived and disposable: it can be dropped and rebuilt
+  without affecting evidence, deduplication identity, or display.
+
+**Read-only MCP surface**
+- Six read tools over Streamable HTTP on loopback, each annotated
+  `readOnlyHint: true`, `openWorldHint: false`.
+- A **provably empty write surface**: CI asserts the registered tool set is
+  disjoint from a named forbidden set, checked against plain module constants so
+  the guarantee survives SDK changes.
+- Bearer-token authentication in ASGI middleware, constant-time compared;
+  DNS-rebinding protection with a pinned `Host`.
+- Redaction (no full phone number ever leaves the boundary) and untrusted-content
+  wrapping of every WhatsApp-originated string.
+- A server-side `LOCAL_ONLY` visibility fence, settable only from the CLI or phone.
+- Keyed-HMAC audit log — not a bare SHA-256, which would make a low-entropy query
+  such as a contact name trivially recoverable by dictionary attack.
+
+**Approval chain**
+- Immutable drafts with single-use nonces and expiry; a shared policy engine runs
+  at prepare and again authoritatively at send.
+- Two-key device enrolment with mutual challenge, binding signing and agreement
+  keys; P-256 ECDH device sealing for draft detail served to the phone.
+- A display guard for bidi overrides, zero-width characters, and confusables —
+  the signature binds bytes, but a human approves rendered glyphs.
+- Crash-durable send state machine: a stranded `SUBMITTING` attempt resolves to
+  `INDETERMINATE`, never a blind resend.
+
+**Ingest**
+- Sealed envelopes authenticating their own header as AEAD associated data, so
+  metadata cannot be swapped or downgraded without failing the tag.
+- Pull-consumer loop that acknowledges only after durable local disposition, with
+  decrypt failures classified by key health — an isolated AEAD failure is poison
+  and quarantined, a systemic one trips a circuit breaker.
+- Dead-letter queue with sanitised metadata and no payload retention.
+
+**Operations and CLI**
+- `whatsvault init` — creates the runtime layout, both encrypted databases, all
+  migrations, and every Keychain key.
+- `import`, `import-undo`, `mcp-visibility`, `mcp-provision`, `doctor`, `health`,
+  and device, DLQ, template, reconciliation, and scheduler verbs.
+- A CLI surface with **no** approve, send, sign, or dispatch verb, asserted by test.
+- Four launchd units, content-free structured logging, filesystem hardening
+  (`0700` directories, `0600` secret files), and conservative startup recovery.
+
+**Project infrastructure**
+- README, architecture overview, usage guide, MCP reference, security policy,
+  contribution guide, and code of conduct.
+- CI running lint and format on Linux, the full suite on macOS across Python
+  3.11–3.13, secret scanning over full history, and a build job that verifies the
+  wheel ships both packages and both console scripts.
+- ruff, coverage, pre-commit, EditorConfig, and a Makefile whose targets are the
+  same commands CI runs.
+
+### Fixed
+
+- **Imported messages were never indexed**, so search over them silently returned
+  nothing. With live ingest gated, import is the only way data enters the vault,
+  meaning the primary read path had never worked end to end. `doctor` had been
+  asserting this all along; unit tests masked it by indexing by hand in fixtures.
+- **No way to create a vault existed.** `provision_db()` and the migration runner
+  were tested but uncalled, while every entry point required databases nothing
+  could produce.
+- **All four launchd units were silent restart loops** — well-formed plists
+  pointing at modules with no entry point, which under `KeepAlive: true` were
+  imported, exited instantly, and restarted forever.
+- MCP transport authentication was a *tool parameter*, publishing the server's own
+  secret in every tool's JSON schema and unreachable over HTTP, where the token
+  arrives in a header.
+- A latent crash in the audit path: hashing a structured `SearchQuery` argument
+  would raise mid-request. Only the no-argument tool had ever been exercised.
+- Roughly twenty leaked file handles across the test suite, surfaced by promoting
+  warnings to errors.
+
+### Security
+
+Findings from a red-team pass over the read surface, each now pinned by a
+regression test in [`tests/adversarial/`](tests/adversarial/):
+
+- **Privacy-fence bypass (high).** `get_conversation_window` ignored the
+  `LOCAL_ONLY` fence, leaking exact last-inbound timestamps for conversations
+  explicitly marked private. Activity timing is content.
+- **Phone numbers recoverable through redaction (high).** Raw `wamid` values were
+  returned unredacted, and a `wamid` base64-decodes to the counterparty's full
+  E.164 — defeating contact masking for every reply. Replaced with opaque,
+  correlatable handles.
+- **Row-limit escape (medium).** `min(limit, MAX_LIMIT)` admits negatives, and
+  SQLite reads `LIMIT -1` as unbounded, so a negative limit returned entire tables.
+- **Audit log recorded every call as a success (medium).** The outcome was
+  hardcoded and written before execution, so a failed probe left a clean trail.
+- **Ambiguous credentials accepted (low).** Duplicate `Authorization` headers were
+  first-wins rather than failing closed.
+
+Hardening applied alongside:
+
+- SQL identifier interpolation is allowlisted at runtime rather than trusted to
+  caller discipline. Every site was safe by inspection; none was safe by
+  construction.
+- A secret-tracking gate fails the build if a key literal, PEM block, or database
+  file is ever tracked, alongside `gitleaks` in pre-commit and CI.
+
+[Unreleased]: https://github.com/Raoof128/whatsvault/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/Raoof128/whatsvault/releases/tag/v0.1.0
