@@ -6,6 +6,7 @@ never approves or sends. V1 forbids autonomous LLM generation: generation_mode i
 static/template only (#47), enforced here and by a schema CHECK. The live APScheduler
 loop (pinned, #46) is a thin gated wrapper around fire()."""
 import json
+import sys
 
 from whatsvault import ids
 
@@ -57,3 +58,37 @@ def fire(control_conn, job_id, *, precondition_fn, prepare_fn, now_ms) -> dict:
 def build_live_scheduler():  # pragma: no cover - live loop, not run in CI
     from apscheduler.schedulers.background import BackgroundScheduler
     return BackgroundScheduler()
+
+
+# --- daemon entrypoint ---------------------------------------------------------
+BLOCKED_ON = "job_payload_schema"
+DETAIL = ("scheduled_jobs carries no body / recipient_wa_id / phone_number_id column, "
+          "so drafts.prepare() cannot be called from a job row; fire() is complete and "
+          "prepare-only, but there is nothing for it to prepare")
+
+
+def run(vault_conn, control_conn, now_ms) -> dict:
+    """Start the scheduler. Jobs load and are counted, but no job can be fired
+    until the payload columns exist, so this reports and stops rather than
+    exiting instantly and being restarted forever by launchd."""
+    from whatsvault.ops import structlog
+    return structlog.event({
+        "service": "scheduler", "status": "not_started",
+        "blocked_on": BLOCKED_ON, "detail": DETAIL,
+        "jobs_loaded": len(load_jobs(control_conn))})
+
+
+def main():  # pragma: no cover - process entrypoint
+    import json
+    import time
+    from whatsvault.ops import daemon
+    vault_conn, control_conn, blocked = daemon.open_databases("scheduler")
+    if blocked is not None:
+        print(json.dumps(blocked))
+        return 0
+    print(json.dumps(run(vault_conn, control_conn, int(time.time() * 1000))))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())

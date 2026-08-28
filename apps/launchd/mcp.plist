@@ -9,7 +9,7 @@
     <string>/Users/USERNAME/.whatsvault/venv/bin/python</string><string>-m</string><string>apps.mcp.server</string>
   </array>
   <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
   <key>ThrottleInterval</key><integer>10</integer>
   <key>WorkingDirectory</key><string>/Users/USERNAME/.whatsvault</string>
   <key>StandardOutPath</key><string>/Users/USERNAME/.whatsvault/logs/mcp.out.log</string>

@@ -13,11 +13,10 @@ import pytest
 
 # Daemons whose module has no __main__ entry yet. Each is a real restart-loop bug;
 # they are recorded rather than silently tolerated, and this list must only shrink.
-KNOWN_BROKEN = {
-    "com.whatsvault.dispatcher": "apps/dispatcher/dispatch.py does not exist",
-    "com.whatsvault.ingest": "apps/ingest/consumer.py has no __main__ entry",
-    "com.whatsvault.scheduler": "apps/scheduler/scheduler.py has no __main__ entry",
-}
+# Empty: every shipped unit now has a real entry point. Three of the four cannot
+# yet do their job (gated dependencies), but they report the blocker and exit 0
+# instead of restart-looping. Keep this empty.
+KNOWN_BROKEN: dict[str, str] = {}
 
 
 def _plists():
@@ -56,7 +55,7 @@ def test_known_broken_list_only_shrinks():
     """A new daemon must not be added to the debt list without a conscious edit."""
     labels = {_load(p)["Label"] for p in _plists()}
     assert set(KNOWN_BROKEN) <= labels, "KNOWN_BROKEN names a plist that no longer exists"
-    assert len(KNOWN_BROKEN) <= 3
+    assert KNOWN_BROKEN == {}, "a launchd unit regressed to having no entry point"
 
 
 def test_mcp_plist_does_not_use_system_python():

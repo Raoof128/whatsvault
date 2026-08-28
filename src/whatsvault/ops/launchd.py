@@ -31,11 +31,27 @@ def _scan(obj, key=""):
     return hits
 
 
+def _keepalive_ok(value) -> bool:
+    """Crash restart, in either accepted form.
+
+    `True` restarts after ANY exit — including a daemon that cleanly reports it is
+    not yet operable, which then hot-loops. `{"SuccessfulExit": false}` restarts
+    only after an UNSUCCESSFUL exit: still crash-restart, but a clean exit stays
+    stopped. `{"SuccessfulExit": true}` is the inverse and is rejected.
+    """
+    if value is True:
+        return True
+    if isinstance(value, dict) and "SuccessfulExit" in value:
+        return value["SuccessfulExit"] is False
+    return False
+
+
 def validate(plist_path) -> list:
     with open(plist_path, "rb") as f:
         pl = plistlib.load(f)
     findings = [{"check": f"has_{r}", "ok": r in pl, "detail": plist_path} for r in _REQUIRED]
-    findings.append({"check": "keepalive_true", "ok": pl.get("KeepAlive") is True, "detail": "crash restart"})
+    findings.append({"check": "keepalive_true", "ok": _keepalive_ok(pl.get("KeepAlive")),
+                     "detail": "crash restart"})
     findings.append({"check": "runatload_true", "ok": pl.get("RunAtLoad") is True, "detail": "start at load"})
     secrets = _scan(pl)
     findings.append({"check": "no_inline_secret", "ok": len(secrets) == 0, "detail": str(secrets)})

@@ -130,22 +130,50 @@ def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", 
     return BearerAuthMiddleware(inner, token)
 
 
+BLOCKED_ON = "keys_not_provisioned"
+DETAIL = ("whatsvault.mcp.token.v1 / whatsvault.mcp.audit.v1 are absent from the "
+          "Keychain; run `whatsvault mcp-provision`")
+
+
+def preflight(ks) -> dict | None:
+    """Return a blocked record if the daemon cannot serve, else None.
+
+    Raising here would exit non-zero and, under KeepAlive, restart forever. A
+    stated precondition should be reported once and then stop.
+    """
+    from whatsvault.crypto import keystore
+    from whatsvault.ops import structlog
+    try:
+        ks.require(auth_mod.TOKEN_KEY_NAME, 32)
+        ks.require(audit.AUDIT_KEY_NAME, 32)
+    except keystore.KeyMissing:
+        return structlog.event({"service": "mcp", "status": "not_started",
+                                "blocked_on": BLOCKED_ON, "detail": DETAIL})
+    return None
+
+
 def main():  # pragma: no cover - process entrypoint; see test_main_symbols_resolve
     """Serve the loopback MCP. Mirrors cli.main's production wiring exactly."""
+    import json
     import uvicorn
     from whatsvault.crypto.keystore import KeyringKeyStore
-    from whatsvault.db import connection as C
-    from whatsvault.ops import fsperms, paths
-    fsperms.harden_umask()
-    p = paths.from_env()
+    from whatsvault.ops import daemon
+    vault_conn, control_conn, blocked = daemon.open_databases("mcp")
+    if blocked is not None:
+        print(json.dumps(blocked))
+        return 0
     ks = KeyringKeyStore()
+    blocked = preflight(ks)
+    if blocked is not None:
+        print(json.dumps(blocked))
+        return 0
     token = ks.require(auth_mod.TOKEN_KEY_NAME, 32).hex()
     audit_key = ks.require(audit.AUDIT_KEY_NAME, 32)
-    app = build_app(C.open_existing("vault", p.vault_db, ks),
-                    C.open_existing("control", p.control_db, ks),
-                    token, audit_key)
+    app = build_app(vault_conn, control_conn, token, audit_key)
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover - `python -m apps.mcp.server`
-    main()
+    import sys
+    sys.exit(main())

@@ -74,14 +74,15 @@ def test_build_app_enables_dns_rebinding_protection(tmp_path):
 
 
 def test_main_symbols_resolve():
-    """`main()` is pragma-no-cover, so nothing else would catch a renamed import.
-    Assert every symbol it touches actually exists (a prior draft referenced a
-    non-existent whatsvault.db.paths and a 1-arg KeyStore.require)."""
+    """`main()` and ops.daemon.open_databases are pragma-no-cover, so nothing else
+    would catch a renamed import. Assert every symbol they touch exists (an early
+    draft referenced a non-existent whatsvault.db.paths and a 1-arg
+    KeyStore.require, neither of which any test would have caught)."""
     import inspect
     from whatsvault.crypto.keystore import KeyringKeyStore
     from whatsvault.db import connection as C
-    from whatsvault.ops import fsperms, paths
     from whatsvault.mcp import audit, auth as auth_mod
+    from whatsvault.ops import daemon, fsperms, paths
 
     assert callable(fsperms.harden_umask)
     p = paths.from_env({})
@@ -89,6 +90,42 @@ def test_main_symbols_resolve():
     assert list(inspect.signature(C.open_existing).parameters) == ["kind", "path", "ks"]
     assert list(inspect.signature(KeyringKeyStore.require).parameters)[1:] == ["name", "nbytes"]
     assert auth_mod.TOKEN_KEY_NAME and audit.AUDIT_KEY_NAME
-    src = inspect.getsource(server.main)
-    for symbol in ("harden_umask", "from_env", "KeyringKeyStore", "open_existing", "build_app"):
-        assert symbol in src
+
+    helper = inspect.getsource(daemon.open_databases)
+    for symbol in ("harden_umask", "from_env", "KeyringKeyStore", "open_existing"):
+        assert symbol in helper, f"ops.daemon.open_databases lost {symbol}"
+    entry = inspect.getsource(server.main)
+    for symbol in ("open_databases", "preflight", "build_app", "uvicorn"):
+        assert symbol in entry, f"server.main lost {symbol}"
+
+
+def test_daemon_open_databases_reports_instead_of_raising(monkeypatch):
+    """A non-macOS/unavailable Keychain must produce a clean blocked record, not an
+    exception: raising exits non-zero and launchd restarts it forever."""
+    from whatsvault.crypto import keystore
+    from whatsvault.ops import daemon
+
+    def boom():
+        raise keystore.KeyStoreError("no keychain here")
+
+    monkeypatch.setattr(keystore, "KeyringKeyStore", boom)
+    v, c, blocked = daemon.open_databases("mcp")
+    assert v is None and c is None
+    assert blocked["status"] == "not_started"
+    assert blocked["blocked_on"] == "keystore_unavailable"
+
+
+def test_daemon_distinguishes_missing_keys_from_a_broken_keystore(monkeypatch):
+    """KeyMissing subclasses KeyStoreError, so ordering matters. Reporting an
+    unprovisioned key as 'keystore_unavailable' would send the operator to repair
+    a Keychain that is fine."""
+    from whatsvault.crypto import keystore
+    from whatsvault.ops import daemon
+
+    def missing():
+        raise keystore.KeyMissing("whatsvault.vault.key.v1")
+
+    monkeypatch.setattr(keystore, "KeyringKeyStore", missing)
+    _, _, blocked = daemon.open_databases("ingest")
+    assert blocked["blocked_on"] == "keys_not_provisioned"
+    assert "provision" in blocked["detail"]

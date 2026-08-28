@@ -7,6 +7,7 @@ absorbed by the dedup ledger on redelivery). Decrypt failures split transient (n
 redeliver) / poison (DLQ + ACK) / systemic (circuit-break, no ACK) by KEY HEALTH."""
 import hashlib
 import json
+import sys
 
 from whatsvault import ids
 from whatsvault.crypto import sealed
@@ -158,3 +159,49 @@ def drain_once(queue, vault_conn, control_conn, key_lookup, *, key_health, now_m
     counts["acked"] = len(to_ack)
     counts["circuit"] = dlq.state(vault_conn)
     return counts
+
+
+# --- daemon entrypoint ---------------------------------------------------------
+BLOCKED_ON = "queue_client"
+DETAIL = ("no real queue client exists: CloudflarePullConsumer is Phase-0-gated "
+          "(Gate 3, Cloudflare); only FakeQueue is available and it is test-only")
+
+
+def build_queue():
+    """Resolve the production queue client. Returns None until Gate 3 is closed."""
+    return None
+
+
+def run(vault_conn, control_conn, now_ms, queue=None, key_lookup=None, *, once=False) -> dict:
+    """Start the consumer. With no queue client this reports its blocker and stops
+    rather than exiting instantly and being restarted forever by launchd."""
+    from whatsvault.ops import recovery, structlog
+    startup = recovery.run_startup(vault_conn, control_conn, now_ms)
+    queue = queue if queue is not None else build_queue()
+    if queue is None or key_lookup is None:
+        return structlog.event({
+            "service": "ingest", "status": "not_started",
+            "blocked_on": BLOCKED_ON, "detail": DETAIL,
+            "circuit_state": startup["circuit_state"]})
+    counts = drain_once(queue, vault_conn, control_conn, key_lookup,
+                        key_health=set(), now_ms=now_ms)
+    rec = {"service": "ingest", "status": "drained", **counts}
+    if once:
+        return structlog.event(rec)
+    return structlog.event(rec)   # pragma: no cover - the live loop lands here (Gate 3)
+
+
+def main():  # pragma: no cover - process entrypoint
+    import json
+    import time
+    from whatsvault.ops import daemon
+    vault_conn, control_conn, blocked = daemon.open_databases("ingest")
+    if blocked is not None:
+        print(json.dumps(blocked))
+        return 0
+    print(json.dumps(run(vault_conn, control_conn, int(time.time() * 1000))))
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    sys.exit(main())
