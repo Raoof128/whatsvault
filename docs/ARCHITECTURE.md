@@ -137,6 +137,47 @@ Keychain checked in ASGI middleware — because `127.0.0.1` is not an auth bound
 when any local process runs as the same user. DNS-rebinding protection pins the
 `Host` header, since a hostile page can otherwise drive a browser at localhost.
 
+### Publishing the read surface
+
+ChatGPT's connector dialog offers OAuth, No Authentication or Mixed. A static
+bearer token satisfies none of them, so reaching the vault from ChatGPT means
+either publishing it with no authentication — out of the question — or running an
+authorization server. Setting `WHATSVAULT_PUBLIC_URL` mounts one.
+
+This changes what the auth layer is *for*. On loopback, reaching the port already
+meant running as the user, and the token was a second lock on a door only you
+could stand at. Published, the authorization server **is** the boundary. Three
+decisions follow from that:
+
+- **It is opt-in and off by default.** With the variable unset, `/oauth/*` and
+  `/.well-known/*` return `404` and no token can be issued. A local deployment
+  gains no attack surface from a feature it is not using.
+- **The unauthenticated region is safe by ownership, not by exemption.** An
+  authorization server must answer without a token. The router answers every path
+  under those prefixes *itself* and forwards none, so no request shape — including
+  `..` and percent-encoded traversal — reaches a tool.
+- **The consent page never accepts a secret.** It displays a code and polls; the
+  grant is made from a terminal with `whatsvault oauth-approve`. A public form
+  asking for a password is a phishing and brute-force target, and this project
+  already holds that approval belongs on a channel the requester cannot reach —
+  the same reasoning that puts sending on the Secure Enclave.
+
+The bind address does not change: the server still listens on `127.0.0.1` and is
+reached through an outbound tunnel, so nothing is exposed by binding. The
+published hostname is added to the `Host` pin rather than the pin being relaxed.
+
+What the flow enforces: PKCE `S256` only, exact-match https redirect URIs,
+single-use 60-second authorization codes bound to client and redirect URI,
+rotating refresh tokens whose reuse revokes the whole grant family, SHA-256
+hashing of every code and token at rest, and a single issuable scope that the
+schema itself `CHECK`s. Approval, issuance, revocation and reuse detection are
+written to the same append-only audit log as tool calls.
+
+**The honest limit:** publishing discloses retrieved content to whichever
+assistant you connect. The read-only surface, the redaction rules and the
+`LOCAL_ONLY` fence all still apply — but they bound what the *model* can do, not
+what the *provider* retains. That trade is the operator's to make deliberately.
+
 ## The approval chain
 
 1. **Prepare** — an immutable draft with a 32-byte nonce and an expiry. The shared

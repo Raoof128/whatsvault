@@ -37,6 +37,13 @@ layers that were each individually correct and individually tested.
   an account or conversation, so the IDs it demands could not be obtained and the
   documented import was unreachable on every new vault.
 - `tests/conftest.py`: fails any test that writes to the operator's real vault.
+- `tests/test_docs_match_code.py`: CI now asserts that the live docs describe the
+  code that exists — every documented CLI verb is registered, every registered MCP
+  tool is documented, the forbidden set the README names really is forbidden,
+  every variable in `.env.example` is read somewhere, and relative links resolve.
+  Doc drift here has not been cosmetic: four documented verbs never existed,
+  `USAGE.md` printed an account id nothing could produce, and `.env.example`
+  offered two variables no code path has ever read.
 - Live-transport tool tests, and two adversarial suites for the OAuth grant
   machinery and for what changes by publishing.
 
@@ -87,6 +94,20 @@ layers that were each individually correct and individually tested.
   cannot leak in a `Referer`, and `nosniff`.
 - OAuth discovery paths answer `404`, not the gate's `401` — clients parse an
   error body as protected-resource metadata.
+
+### Documentation
+
+- `.env.example` no longer offers `WHATSVAULT_MCP_HOST` and `WHATSVAULT_MCP_PORT`.
+  No code path has ever read them, so setting them did nothing and gave no clue
+  why. Removed rather than implemented: the loopback bind is a design property,
+  not a default, and the file now says so and documents
+  `WHATSVAULT_PUBLIC_URL`, which is read.
+- README, ARCHITECTURE and SECURITY describe the published deployment: what the
+  OAuth server is for, why the consent page accepts no secret, why the
+  unauthenticated region cannot reach a tool, and the trade being made — content
+  reaches a third party on every tool call, and the read-only surface bounds the
+  model, not the host.
+- The README's red-team section covers both rounds rather than only the first.
 
 ---
 

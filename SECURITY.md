@@ -38,6 +38,10 @@ This project is a single-user, local-first system. That shapes what counts.
 - Any way a **message body** can escalate into authority: selecting tools,
   widening retrieval scope, altering policy, or reaching a write path
 - Authentication or authorisation flaws in the MCP transport
+- Anything in the OAuth 2.1 authorization server mounted by
+  `WHATSVAULT_PUBLIC_URL`: a token issued without an out-of-band approval, a PKCE
+  or redirect-URI bypass, a code replayed, a revoked or rotated credential still
+  accepted, or any path under `/oauth/` or `/.well-known/` that reaches a tool
 - Sealed-envelope, replay, nonce, or clock-trust weaknesses
 - Audit-log integrity failures — including a failed action recorded as a success
 
@@ -52,7 +56,10 @@ This project is a single-user, local-first system. That shapes what counts.
 - The named residual risk **R1**: a message body engineered to defeat both the
   confusables/bidi display guard *and* a human reading it. This is documented as
   an accepted V1 limitation, not an oversight — see the design specification.
-- Denial of service against your own local daemon
+- Denial of service against your own **local** daemon. Resource exhaustion
+  against a *published* deployment is in scope — unbounded storage from
+  unauthenticated requests is the concrete case, and the reason those fields are
+  capped and expired rows collected.
 
 ## The invariants a report should aim at
 
@@ -96,3 +103,9 @@ Alpha. Only `main` receives fixes.
   macOS Keychain. If you find yourself putting a token in `.env`, that is a bug.
 - Connecting an assistant intentionally discloses the excerpts it retrieves to
   that provider. That is the trade being made; make it deliberately.
+- Publishing the surface (`WHATSVAULT_PUBLIC_URL`) widens that considerably: the
+  content of anything the model can read now reaches a third party on every tool
+  call, and the authorization server becomes the thing standing between your
+  archive and the internet. Fence what should never leave *before* publishing —
+  `whatsvault mcp-visibility --conversation-id … --visibility LOCAL_ONLY` — and
+  `whatsvault oauth-revoke` is the off switch.

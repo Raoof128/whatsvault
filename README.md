@@ -5,7 +5,7 @@
 [![CI](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml/badge.svg)](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-539%20passing-brightgreen.svg)](#testing)
 
 WhatsVault ingests your WhatsApp messages into an encrypted SQLCipher vault on your own Mac, indexes them for fast bilingual (English/Persian) search, and exposes a **strictly read-only** [MCP](https://modelcontextprotocol.io) surface so an assistant like ChatGPT or Claude can search and quote them.
 
@@ -46,9 +46,13 @@ The full set, with rationale and threat model, is in the [design specification](
                                                                   │  + FTS5 index │
                                                                   └───────┬───────┘
                                                                           │ read-only
-  ChatGPT / Claude ──▶ Secure MCP Tunnel ──▶  loopback MCP  ──────────────┘
-                                             (6 read tools, bearer auth,
-                                              redaction, LOCAL_ONLY fence)
+  Claude Code / Desktop ─────────────────▶  loopback MCP  ────────────────┘
+                            bearer token   (6 read tools, redaction,
+                                            LOCAL_ONLY fence, audited)
+                                                     ▲
+  ChatGPT ──▶ outbound tunnel ──▶ OAuth 2.1 AS ──────┘
+              (nothing bound     (approval is granted from the
+               publicly)          terminal, never on the web page)
                                                      │
                                                      │ prepare_message (draft only)
                                                      ▼
@@ -96,7 +100,31 @@ Then start the read-only MCP server:
 whatsvault-mcp                # serves on http://127.0.0.1:8765/mcp
 ```
 
-Point your assistant at that endpoint with the bearer token. Full walkthrough: [docs/USAGE.md](docs/USAGE.md).
+**Locally** — Claude Code and Claude Desktop speak HTTP MCP directly, so the
+bearer token is all they need:
+
+```bash
+claude mcp add --transport http whatsvault http://127.0.0.1:8765/mcp \
+  --header "Authorization: Bearer $TOKEN"
+```
+
+**From ChatGPT**, whose connector dialog offers only OAuth, No Authentication or
+Mixed, set `WHATSVAULT_PUBLIC_URL` to an https origin fronted by an outbound
+tunnel. That mounts an OAuth 2.1 authorization server; nothing is bound
+publicly. The consent page has no password field — it shows a code, and you
+grant it from a terminal:
+
+```bash
+whatsvault oauth-pending
+whatsvault oauth-approve --code ABCDE-FGHIJ
+whatsvault oauth-revoke        # the off switch
+```
+
+Publishing means message content reaches that provider on every tool call. The
+read-only surface, redaction and the `LOCAL_ONLY` fence still hold, but they
+bound the *model*, not the host. Fence anything that should never leave first.
+
+Full walkthrough: [docs/USAGE.md](docs/USAGE.md).
 
 ## The MCP surface
 
@@ -119,12 +147,24 @@ Every returned string that originated from WhatsApp is wrapped as untrusted data
 
 Message content is the asset, and the threat model treats the assistant itself as a potential adversary — not out of paranoia, but because a prompt-injected model is a realistic attacker with legitimate credentials.
 
-The read surface has been red-teamed, and the findings are in the history rather than the marketing:
+The read surface has been red-teamed twice, and the findings are in the history
+rather than the marketing.
+
+**The loopback surface:**
 
 - A metadata leak past the `LOCAL_ONLY` privacy fence (activity timestamps for conversations explicitly marked private)
 - Full phone numbers recoverable from raw `wamid` values, which base64-decode to the counterparty's E.164 — defeating the redaction layer for any reply
 - A row limit that a negative value could escape entirely, because SQLite reads `LIMIT -1` as unbounded
+- `get_conversation_window` took the current time *from the caller*, letting a model assert the clock that decides whether a send window is open
 - An audit log that recorded every call as a success, so a failed probe left a clean trail
+
+**The published surface**, attacked separately because publishing changes what
+the auth layer is for — nineteen findings, including:
+
+- Every unauthenticated OAuth field stored unbounded, so a loop of authorize calls wrote whatever the caller liked into the operator's database
+- Grants unaudited: tool calls were recorded, the grant authorising them was not, so an incident had no answer to *who was given access, and when*
+- Refresh rotation that contained nothing — the replaced access token stayed live for its full hour — and reuse of a rotated token that failed only the one call, leaving a thief's newer pair working
+- A consent page that escaped only `<`, and did not strip bidi overrides — which can make a hostile client name read as a familiar one in the sentence asking for consent
 
 All are fixed, and each is pinned by a regression test in [`tests/adversarial/`](tests/adversarial/). To report a vulnerability, see [SECURITY.md](SECURITY.md).
 
@@ -137,7 +177,7 @@ make secrets    # fail if anything secret-shaped is tracked
 make test-cov   # with a coverage report
 ```
 
-529 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
+539 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
 
 ## Project status
 
@@ -145,6 +185,7 @@ make test-cov   # with a coverage report
 |---|---|
 | Vault core, importer, bilingual search | Implemented and tested |
 | Read-only MCP (auth, redaction, ACL, audit) | Implemented, red-teamed, serving over loopback |
+| Public deployment (OAuth 2.1, out-of-band approval) | Implemented and red-teamed; opt-in via `WHATSVAULT_PUBLIC_URL` |
 | Approval chain (drafts, device enrolment, policy, signatures) | Implemented and tested locally |
 | Sealed ingest pipeline | Implemented; the Cloudflare edge is a recorded contract, not yet built |
 | Live WhatsApp send | **Deliberately inert.** Blocked behind Phase-0 verification |

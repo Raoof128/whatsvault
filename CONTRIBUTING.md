@@ -71,6 +71,8 @@ If your change affects any of the following, say so explicitly in the pull
 request and expect closer review:
 
 - The MCP tool surface, its authentication, redaction, or the `LOCAL_ONLY` fence
+- The OAuth authorization server, the request router in front of it, or anything
+  that decides which paths bypass the bearer gate
 - The approval chain: drafts, nonces, signatures, device enrolment, policy
 - Sealed envelopes, key handling, or anything reading from the Keychain
 - The audit log
