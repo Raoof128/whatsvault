@@ -218,7 +218,9 @@ def test_init_migrates_a_vault_created_by_an_earlier_version(env):
     control.execute("DROP TABLE IF EXISTS oauth_codes")
     control.execute("DROP TABLE IF EXISTS oauth_pending")
     control.execute("DROP TABLE IF EXISTS oauth_clients")
-    control.execute(f"PRAGMA user_version = {latest - 1}")
+    # Rewind past every migration that touches these tables, so the runner
+    # recreates them rather than trying to ALTER one that is not there.
+    control.execute("PRAGMA user_version = 3")
     control.commit()
     control.close()
 

@@ -39,6 +39,19 @@ PENDING_TTL_MS = 600_000
 ACCESS_TTL_MS = 3_600_000
 REFRESH_TTL_MS = 30 * 24 * 3_600_000
 
+# Every endpoint below is reachable by anyone once the vault is published, so
+# every attacker-controlled field is bounded. Unbounded, a loop of authorize
+# calls writes as much as the caller likes into the operator's database.
+MAX_STATE_LEN = 512
+MAX_CHALLENGE_LEN = 128  # RFC 7636: a base64url S256 challenge is 43 chars
+MIN_CHALLENGE_LEN = 43
+MAX_REDIRECT_LEN = 512
+MAX_REDIRECT_URIS = 10
+MAX_CLIENT_NAME_LEN = 200
+# Live unapproved requests. Bounds the disk cost of a flood, and bounds how many
+# codes an operator could be socially engineered into approving.
+MAX_PENDING = 25
+
 # Unambiguous alphabet: no O/0, I/1, or S/5 to misread off a screen.
 _CODE_ALPHABET = "ABCDEFGHJKLMNPQRTUVWXYZ2346789"
 _CODE_LEN = 10  # 30^10 > 2^49; paired with a 10-minute TTL and single use
@@ -53,6 +66,34 @@ class OAuthError(Exception):
         super().__init__(description or code)
         self.code = code
         self.description = description
+
+
+def _audit(control_conn, key, tool: str, outcome: str, args: dict, now_ms) -> None:
+    """Record a grant event.
+
+    Tool calls were audited but the grant that authorised them was not, so after
+    an incident there was no answer to "who was given access, and when".
+
+    The key is passed explicitly rather than carried on the connection: a
+    sqlcipher3 connection has no __dict__, and threading it through makes it
+    visible at every call site which operations are accountable.
+    """
+    if key is None:  # a deployment that never enabled auditing
+        return
+    from . import audit as _audit_mod
+
+    # args are hashed by audit.record, never stored: they must never carry the
+    # credential itself.
+    _audit_mod.record(
+        control_conn, key, actor="oauth", tool=tool, args=args, outcome=outcome, now_ms=int(now_ms)
+    )
+
+
+def _bounded(value, limit: int, field: str) -> str:
+    text = "" if value is None else str(value)
+    if len(text) > limit:
+        raise OAuthError("invalid_request", f"{field} exceeds {limit} characters")
+    return text
 
 
 def _hash(value: str) -> str:
@@ -79,7 +120,10 @@ def register_client(control_conn, *, client_name, redirect_uris, now_ms) -> dict
     uris = [str(u) for u in (redirect_uris or [])]
     if not uris:
         raise OAuthError("invalid_redirect_uri", "at least one redirect_uri is required")
+    if len(uris) > MAX_REDIRECT_URIS:
+        raise OAuthError("invalid_redirect_uri", f"at most {MAX_REDIRECT_URIS} redirect_uris")
     for uri in uris:
+        _bounded(uri, MAX_REDIRECT_LEN, "redirect_uri")
         # https only. A cleartext redirect hands the authorization code to
         # anyone on the path, and PKCE does not protect the code in transit.
         if not uri.startswith("https://"):
@@ -89,7 +133,7 @@ def register_client(control_conn, *, client_name, redirect_uris, now_ms) -> dict
     client_id = "wvc_" + secrets.token_urlsafe(16)
     control_conn.execute(
         "INSERT INTO oauth_clients(client_id, client_name, redirect_uris, created_ms) VALUES(?,?,?,?)",
-        (client_id, str(client_name or "")[:200], json.dumps(uris), int(now_ms)),
+        (client_id, str(client_name or "")[:MAX_CLIENT_NAME_LEN], json.dumps(uris), int(now_ms)),
     )
     control_conn.commit()
     # A public client: no secret is issued, because a browser-based client cannot
@@ -138,10 +182,22 @@ def begin_authorization(
     `scope` is accepted and ignored beyond being narrowed to READ_ONLY_SCOPE — a
     client does not get to ask for more authority than this server has.
     """
+    collect_expired(control_conn, now_ms)
+    live = control_conn.execute(
+        "SELECT COUNT(*) FROM oauth_pending WHERE approved_ms IS NULL AND expires_ms > ?",
+        (int(now_ms),),
+    ).fetchone()[0]
+    if live >= MAX_PENDING:
+        raise OAuthError("temporarily_unavailable", "too many pending authorizations")
+
     row = _client(control_conn, client_id)
     redirect = _check_redirect(row, redirect_uri)
+    state = _bounded(state, MAX_STATE_LEN, "state") if state is not None else None
     if not code_challenge:
         raise OAuthError("invalid_request", "PKCE is required")
+    challenge = _bounded(code_challenge, MAX_CHALLENGE_LEN, "code_challenge")
+    if len(challenge) < MIN_CHALLENGE_LEN:
+        raise OAuthError("invalid_request", "code_challenge is too short for S256")
     if str(code_challenge_method or "").upper() != "S256":
         # `plain` makes the challenge equal the verifier, so anyone who sees the
         # authorization request can complete the exchange (OAuth 2.1 drops it).
@@ -157,8 +213,8 @@ def begin_authorization(
             user_code,
             row["client_id"],
             redirect,
-            str(state) if state is not None else None,
-            str(code_challenge),
+            state,
+            challenge,
             READ_ONLY_SCOPE,
             int(now_ms),
             int(now_ms) + PENDING_TTL_MS,
@@ -174,6 +230,24 @@ def begin_authorization(
     }
 
 
+def collect_expired(control_conn, now_ms) -> int:
+    """Delete state nobody can use any more.
+
+    Every unauthenticated authorize call leaves a row. Without collection the
+    tables grow for as long as anyone cares to send requests, and the disk is
+    the operator's.
+    """
+    n = 0
+    for sql in (
+        "DELETE FROM oauth_pending WHERE expires_ms <= ?",
+        "DELETE FROM oauth_codes WHERE expires_ms <= ?",
+        "DELETE FROM oauth_tokens WHERE expires_ms <= ?",
+    ):
+        n += control_conn.execute(sql, (int(now_ms),)).rowcount
+    control_conn.commit()
+    return n
+
+
 def pending_requests(control_conn, now_ms) -> list:
     """What `whatsvault oauth-pending` shows the operator before approving."""
     rows = control_conn.execute(
@@ -185,7 +259,7 @@ def pending_requests(control_conn, now_ms) -> list:
     return [dict(r) for r in rows]
 
 
-def approve(control_conn, *, user_code, now_ms) -> dict:
+def approve(control_conn, *, user_code, now_ms, audit_key=None) -> dict:
     """Out-of-band approval. Reaching this function at all means terminal access
     to the machine holding the vault, which is the authority being asserted."""
     code = str(user_code or "").strip().upper()
@@ -201,6 +275,14 @@ def approve(control_conn, *, user_code, now_ms) -> dict:
         raise OAuthError("expired_token", "authorization request expired")
     control_conn.execute(
         "UPDATE oauth_pending SET approved_ms=? WHERE request_id=?", (int(now_ms), row["request_id"])
+    )
+    _audit(
+        control_conn,
+        audit_key,
+        "oauth.approve",
+        "ok",
+        {"request_id": row["request_id"], "client_id": row["client_id"]},
+        now_ms,
     )
     control_conn.commit()
     return {"request_id": row["request_id"], "client_id": row["client_id"]}
@@ -249,24 +331,27 @@ def poll(control_conn, *, request_id, now_ms):
 
 
 # ---- token ---------------------------------------------------------------------
-def _issue(control_conn, client_id, now_ms) -> dict:
+def _issue(control_conn, client_id, now_ms, grant_id=None, audit_key=None) -> dict:
+    grant_id = grant_id or "wvg_" + secrets.token_urlsafe(16)
     access, refresh_token = _new_secret(), _new_secret()
-    control_conn.execute(
-        "INSERT INTO oauth_tokens(token_hash, kind, client_id, scope, issued_ms, expires_ms) "
-        "VALUES(?,?,?,?,?,?)",
-        (_hash(access), "access", client_id, READ_ONLY_SCOPE, int(now_ms), int(now_ms) + ACCESS_TTL_MS),
-    )
-    control_conn.execute(
-        "INSERT INTO oauth_tokens(token_hash, kind, client_id, scope, issued_ms, expires_ms) "
-        "VALUES(?,?,?,?,?,?)",
-        (
-            _hash(refresh_token),
-            "refresh",
-            client_id,
-            READ_ONLY_SCOPE,
-            int(now_ms),
-            int(now_ms) + REFRESH_TTL_MS,
-        ),
+    for token, kind, ttl in (
+        (access, "access", ACCESS_TTL_MS),
+        (refresh_token, "refresh", REFRESH_TTL_MS),
+    ):
+        control_conn.execute(
+            "INSERT INTO oauth_tokens(token_hash, kind, client_id, scope, issued_ms, expires_ms, "
+            "grant_id) VALUES(?,?,?,?,?,?,?)",
+            (_hash(token), kind, client_id, READ_ONLY_SCOPE, int(now_ms), int(now_ms) + ttl, grant_id),
+        )
+    # The credential itself is never an audit argument; the grant it belongs to
+    # is what an investigation needs.
+    _audit(
+        control_conn,
+        audit_key,
+        "oauth.token_issued",
+        "ok",
+        {"client_id": client_id, "grant_id": grant_id, "scope": READ_ONLY_SCOPE},
+        now_ms,
     )
     control_conn.commit()
     return {
@@ -278,7 +363,18 @@ def _issue(control_conn, client_id, now_ms) -> dict:
     }
 
 
-def exchange_code(control_conn, *, code, client_id, redirect_uri, code_verifier, now_ms) -> dict:
+def _revoke_family(control_conn, grant_id, now_ms) -> int:
+    cur = control_conn.execute(
+        "UPDATE oauth_tokens SET revoked_ms=? WHERE grant_id=? AND revoked_ms IS NULL",
+        (int(now_ms), grant_id),
+    )
+    control_conn.commit()
+    return cur.rowcount
+
+
+def exchange_code(
+    control_conn, *, code, client_id, redirect_uri, code_verifier, now_ms, audit_key=None
+) -> dict:
     row = control_conn.execute("SELECT * FROM oauth_codes WHERE code_hash=?", (_hash(code or ""),)).fetchone()
     if not row:
         raise OAuthError("invalid_grant", "unknown authorization code")
@@ -307,24 +403,42 @@ def exchange_code(control_conn, *, code, client_id, redirect_uri, code_verifier,
     # was meant to be would never have fired.
     if cur.rowcount != 1:
         raise OAuthError("invalid_grant", "authorization code already used")
-    return _issue(control_conn, row["client_id"], now_ms)
+    return _issue(control_conn, row["client_id"], now_ms, audit_key=audit_key)
 
 
-def refresh(control_conn, *, refresh_token, client_id, now_ms) -> dict:
+def refresh(control_conn, *, refresh_token, client_id, now_ms, audit_key=None) -> dict:
     row = control_conn.execute(
         "SELECT * FROM oauth_tokens WHERE token_hash=? AND kind='refresh'",
         (_hash(refresh_token or ""),),
     ).fetchone()
-    if not row or row["revoked_ms"] is not None or int(now_ms) > row["expires_ms"]:
+    if not row:
+        raise OAuthError("invalid_grant", "refresh token is not valid")
+    if row["revoked_ms"] is not None:
+        # Reuse of a ROTATED refresh token is evidence that it was captured
+        # (OAuth 2.1 §4.14.2). Refusing only this call would leave the thief's
+        # freshly rotated pair working; the whole family goes.
+        killed = _revoke_family(control_conn, row["grant_id"], now_ms)
+        _audit(
+            control_conn,
+            audit_key,
+            "oauth.refresh_reuse_detected",
+            "revoked",
+            {"grant_id": row["grant_id"], "tokens_revoked": killed},
+            now_ms,
+        )
+        raise OAuthError("invalid_grant", "refresh token is not valid")
+    if int(now_ms) > row["expires_ms"]:
         raise OAuthError("invalid_grant", "refresh token is not valid")
     if not hmac.compare_digest(str(client_id or ""), row["client_id"]):
         raise OAuthError("invalid_grant", "refresh token was not issued to this client")
-    # Rotation: the presented token dies here. Its later reuse is the signal that
-    # it was captured, and it will simply fail.
+    # Rotation retires the whole previous pair, not just the refresh token:
+    # leaving the old access token alive gave a thief a working credential for
+    # its full hour, which the operator had no reason to believe existed.
     control_conn.execute(
-        "UPDATE oauth_tokens SET revoked_ms=? WHERE token_hash=?", (int(now_ms), row["token_hash"])
+        "UPDATE oauth_tokens SET revoked_ms=? WHERE grant_id=? AND revoked_ms IS NULL",
+        (int(now_ms), row["grant_id"]),
     )
-    return _issue(control_conn, row["client_id"], now_ms)
+    return _issue(control_conn, row["client_id"], now_ms, grant_id=row["grant_id"], audit_key=audit_key)
 
 
 def validate_access_token(control_conn, token, now_ms):
@@ -345,9 +459,10 @@ def validate_access_token(control_conn, token, now_ms):
     return {"client_id": row["client_id"], "scope": row["scope"]}
 
 
-def revoke_all(control_conn, now_ms) -> int:
+def revoke_all(control_conn, now_ms, audit_key=None) -> int:
     cur = control_conn.execute(
         "UPDATE oauth_tokens SET revoked_ms=? WHERE revoked_ms IS NULL", (int(now_ms),)
     )
+    _audit(control_conn, audit_key, "oauth.revoke_all", "ok", {"tokens_revoked": cur.rowcount}, now_ms)
     control_conn.commit()
     return cur.rowcount

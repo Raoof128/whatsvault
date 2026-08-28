@@ -50,6 +50,17 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
+def _audit_key(ctx):
+    """The audit HMAC key, when this context has a keystore. A grant recorded
+    without it is a grant nobody can account for afterwards."""
+    if ctx.ks is None:
+        return None
+    try:
+        return ctx.ks.require(audit.AUDIT_KEY_NAME, 32)
+    except keystore.KeyStoreError:
+        return None
+
+
 def cmd_doctor(ctx, args):
     return {
         "ok": True,
@@ -197,7 +208,7 @@ def cmd_oauth_approve(ctx, args):
     if not code:
         return {"ok": False, "error": "--code is required (see `whatsvault oauth-pending`)"}
     try:
-        granted = oauth.approve(ctx.control, user_code=code, now_ms=_now_ms())
+        granted = oauth.approve(ctx.control, user_code=code, now_ms=_now_ms(), audit_key=_audit_key(ctx))
     except oauth.OAuthError as exc:
         return {"ok": False, "error": f"{exc.code}: {exc.description}"}
     return {"ok": True, "approved": granted["request_id"], "scope": oauth.READ_ONLY_SCOPE}
@@ -206,7 +217,7 @@ def cmd_oauth_approve(ctx, args):
 def cmd_oauth_revoke(ctx, args):
     """Revoke every OAuth token. The connector must re-authorise, which needs a
     fresh approval here. This is the off switch for a public deployment."""
-    return {"ok": True, "revoked": oauth.revoke_all(ctx.control, _now_ms())}
+    return {"ok": True, "revoked": oauth.revoke_all(ctx.control, _now_ms(), _audit_key(ctx))}
 
 
 def cmd_import(ctx, args):

@@ -98,9 +98,13 @@ def test_an_expired_request_cannot_be_approved(control, client):
 
 def test_guessing_a_user_code_is_not_feasible(control, client):
     """The user code is what an attacker would brute-force to self-approve, so it
-    must carry real entropy and not be a counter or a timestamp."""
-    _, challenge = _verifier_and_challenge()
-    codes = {_authorize(control, client, challenge)["user_code"] for _ in range(50)}
+    must carry real entropy and not be a counter or a timestamp.
+
+    Generated directly rather than through begin_authorization: that path is
+    throttled at MAX_PENDING live requests, which is a different defence tested
+    in test_redteam_public.py.
+    """
+    codes = {oauth._new_user_code() for _ in range(50)}
     assert len(codes) == 50, "user codes repeat"
     alphabet = set("".join(codes)) - {"-"}
     body = len(next(iter(codes)).replace("-", ""))

@@ -11,8 +11,10 @@ request shape — including one that climbs back out with `..` — can use the
 unauthenticated region to reach a tool.
 """
 
+import html
 import json
 import time
+import unicodedata
 import urllib.parse
 
 from . import oauth
@@ -20,6 +22,21 @@ from . import oauth
 _JSON = [(b"content-type", b"application/json")]
 _HTML = [(b"content-type", b"text/html; charset=utf-8")]
 _NO_STORE = [(b"cache-control", b"no-store"), (b"pragma", b"no-cache")]
+
+# Defence in depth for the one page a human looks at. Even a rendering mistake
+# should not be able to send the authorization code to another origin, and the
+# code must never ride out in a Referer header.
+SECURITY_HEADERS = [
+    (
+        b"content-security-policy",
+        b"default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+        b"img-src 'none'; connect-src 'self'; base-uri 'none'; form-action 'none'; "
+        b"frame-ancestors 'none'",
+    ),
+    (b"referrer-policy", b"no-referrer"),
+    (b"x-content-type-options", b"nosniff"),
+    (b"x-frame-options", b"DENY"),
+]
 
 # Every path this module owns. Membership is by exact match on the *raw* path,
 # and anything else under these prefixes is a 404 from here rather than a
@@ -36,7 +53,12 @@ async def _respond(send, status, headers, body: bytes):
         {
             "type": "http.response.start",
             "status": status,
-            "headers": [*headers, *_NO_STORE, (b"content-length", str(len(body)).encode())],
+            "headers": [
+                *headers,
+                *_NO_STORE,
+                *SECURITY_HEADERS,
+                (b"content-length", str(len(body)).encode()),
+            ],
         }
     )
     await send({"type": "http.response.body", "body": body})
@@ -64,8 +86,9 @@ async def _read_body(receive) -> bytes:
 class OAuthApp:
     """Handles the authorization-server endpoints; owns its paths completely."""
 
-    def __init__(self, control_conn, public_url: str, *, now=None):
+    def __init__(self, control_conn, public_url: str, *, now=None, audit_key=None):
         self._control = control_conn
+        self._audit_key = audit_key
         self._base = str(public_url).rstrip("/")
         self._now = now or (lambda: int(time.time() * 1000))
 
@@ -207,6 +230,7 @@ class OAuthApp:
                     redirect_uri=form.get("redirect_uri"),
                     code_verifier=form.get("code_verifier"),
                     now_ms=self._now(),
+                    audit_key=self._audit_key,
                 )
             elif grant == "refresh_token":
                 granted = oauth.refresh(
@@ -214,6 +238,7 @@ class OAuthApp:
                     refresh_token=form.get("refresh_token"),
                     client_id=form.get("client_id"),
                     now_ms=self._now(),
+                    audit_key=self._audit_key,
                 )
             else:
                 await _error(send, 400, "unsupported_grant_type")
@@ -224,6 +249,20 @@ class OAuthApp:
         await _json(send, 200, granted)
 
 
+def _safe_name(name) -> str:
+    """Render an attacker-supplied client name safely.
+
+    Two separate hazards. HTML escaping stops it becoming markup on a page served
+    from the vault's own origin. Stripping bidi and zero-width controls stops it
+    *lying to the operator* — a right-to-left override can make a hostile name
+    read as a familiar one in the very sentence asking for consent, which is the
+    same class of vector tests/test_display_guard.py exists to contain.
+    """
+    text = str(name or "An application")
+    text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+    return html.escape(text, quote=True) or "An application"
+
+
 def _consent_page(pending: dict) -> str:
     """No form, no password field, nothing to submit.
 
@@ -231,7 +270,7 @@ def _consent_page(pending: dict) -> str:
     terminal, then polls. A public page that accepted a secret would be a
     phishing target and a brute-force target; this one has nothing to steal.
     """
-    client = (pending.get("client_name") or "An application").replace("<", "&lt;")
+    client = _safe_name(pending.get("client_name"))
     return f"""<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>WhatsVault — approve access</title>

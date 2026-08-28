@@ -282,7 +282,7 @@ def assert_usable_from_worker_threads(**conns) -> None:
             ) from box["error"]
 
 
-def build_oauth_app(inner, control_conn, token, *, public_url=None):
+def build_oauth_app(inner, control_conn, token, *, public_url=None, audit_key=None):
     """Wrap an already-built MCP application in the auth surface.
 
     public_url=None is the loopback deployment: a static bearer token and no
@@ -302,7 +302,7 @@ def build_oauth_app(inner, control_conn, token, *, public_url=None):
         control_conn=control_conn,
         resource_metadata_url=f"{base}/.well-known/oauth-protected-resource",
     )
-    return PublicRouter(OAuthApp(control_conn, base), guarded)
+    return PublicRouter(OAuthApp(control_conn, base, audit_key=audit_key), guarded)
 
 
 def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", port=PORT, public_url=None):
@@ -314,7 +314,7 @@ def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", 
         transport_security=transport_security_settings(port, public_url),
         host=HOST,
     )
-    return build_oauth_app(inner, control_conn, token, public_url=public_url)
+    return build_oauth_app(inner, control_conn, token, public_url=public_url, audit_key=audit_key)
 
 
 BLOCKED_ON = "keys_not_provisioned"
