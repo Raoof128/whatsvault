@@ -145,3 +145,7 @@ def main():  # pragma: no cover - process entrypoint; see test_main_symbols_reso
                     C.open_existing("control", p.control_db, ks),
                     token, audit_key)
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
+
+
+if __name__ == "__main__":  # pragma: no cover - `python -m apps.mcp.server`
+    main()

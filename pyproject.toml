@@ -17,7 +17,11 @@ dependencies = [
 dev = ["pytest"]
 
 [tool.setuptools.packages.find]
-where = ["src"]
+# apps/ must be packaged too: the launchd units run `-m apps.mcp.server`, and the
+# console script below resolves into it. With where=["src"] only, an installed
+# wheel contained no `apps` at all and both entry points failed.
+where = ["src", "."]
+include = ["whatsvault*", "apps*"]
 
 [tool.setuptools.package-data]
 "whatsvault.db" = ["migrations/vault/*.sql", "migrations/control/*.sql"]
@@ -28,3 +32,4 @@ pythonpath = ["src", "."]
 
 [project.scripts]
 whatsvault = "whatsvault.cli.main:main"
+whatsvault-mcp = "apps.mcp.server:main"
