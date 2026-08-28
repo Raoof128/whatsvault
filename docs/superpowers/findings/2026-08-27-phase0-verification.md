@@ -241,8 +241,15 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** 2b activation (#18). ChatGPT does not simply connect to arbitrary local MCP servers; a supported route (Developer Mode / Secure MCP Tunnel / remote MCP) is required, and product-plan support varies.
 **Required evidence:** OpenAI help/doc quote naming the supported route; **the intended account's actual plan tested against the currently-supported MCP modes** (not merely proof that the route exists); date. If the account's plan is not currently listed as supporting the required MCP mode, O1 is `BLOCKED` even though the technical route exists.
-**Observed result:** DOC-CONFIRMED (2026-08-28, OpenAI Help): ChatGPT cannot connect directly to a local MCP; **Secure MCP Tunnel** is the documented private/local/developer-machine route; full MCP incl. modify/write actions is currently rolling out for **Business/Enterprise/Edu**; **Pro** can use custom MCPs with **read/fetch** permissions in Developer Mode. ACCOUNT-SPECIFIC UNCONFIRMED: whether the intended account's plan supports the required MCP mode (if read-only Pro but write tools are needed later → BLOCKED for write; read surface may still proceed).
-**Raw evidence reference:** https://help.openai.com/en/articles/12584461 — per Raouf's 2026-08-28 primary-doc verification; an independent WebFetch (2026-08-28) returned HTTP 403 (help.openai.com is login/bot-gated), so re-confirm the wording + the account's plan capabilities in-session before O1 is ticked.
+**Observed result:** DOC-VERIFIED IN-SESSION (2026-08-28, article "Developer mode and MCP apps in ChatGPT", updated "6 days ago"). Verbatim:
+> "Not directly. ChatGPT connects to remote MCP servers. If your MCP server runs on a private network, on-premises, or on a developer machine, use **Secure MCP Tunnel** to connect it to supported OpenAI products without exposing the server to the public internet."
+
+> "Pro users can build apps using the Apps SDK. **Full MCP is only available to Business and Enterprise/Edu users, currently.** Pro users can connect MCPs with **read/fetch permissions** in developer mode."
+
+> "Apps, full MCP support, and developer mode are available for ChatGPT Business and Enterprise/Edu customers **on ChatGPT web**."
+
+Route CONFIRMED (Secure MCP Tunnel). ACCOUNT-SPECIFIC STILL UNCONFIRMED: Raouf's plan tier is not yet recorded. Consequence is now precise — **on Pro the Phase-2a six-tool read surface is connectable, but the Phase-4 prepare/draft tools would NOT be invokable** (read/fetch only). Write-capable 2b requires Business/Enterprise/Edu.
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt — read in-session 2026-08-28 via a real browser. NOTE: the earlier HTTP 403 was **bot-gating, not login-gating** — the page is public (it renders with a "Login" link present); the prior "login/bot-gated" characterisation is corrected. Secure MCP Tunnel's own guide (auth model, O2) is a SEPARATE unread doc: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 **Security consequence:** an unsupported or insecure route could expose the loopback MCP surface (private message history) beyond the intended boundary.
 **Decision:** PROCEED (supported route) / FALLBACK REQUIRED (OpenAI Responses API remote-MCP) / BLOCK _(unfilled)_
 **Reverification trigger:** OpenAI changes MCP connectivity or product-plan support.
@@ -251,8 +258,30 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters (requirement, mechanism-agnostic):** the selected route MUST provide an authenticated binding from the authorised ChatGPT connection to the local WhatsVault MCP, and MUST prevent unauthorised local or tunnel clients from invoking it. The existing Keychain-backed bearer token MAY be used where the selected route supports it; otherwise the route's authenticated identity MUST be mapped to the same local access decision (#19). Verify the *actual* mechanism the route provides — do not assume the local bearer token literally traverses it.
 **Required evidence:** OpenAI doc on the chosen route's authentication model; a test proving an unauthorised local/tunnel client cannot invoke the MCP; the mapping used (bearer token, or route-identity → local access decision); date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** PARTIAL (2026-08-28). The Developer-mode article documents the **OAuth** path only, and imposes a refresh-token requirement, verbatim:
+> "For OpenID Connect providers, the standard way to request a refresh token is to include the `offline_access` scope in the authorization request... If OAuth is configured without `offline_access`, ChatGPT may lose access after the original authorization expires."
+
+CONSEQUENCE FOR #19: WhatsVault's MCP currently authenticates with a **Keychain bearer token**, not OAuth. If the selected route requires OAuth, the bearer token does **not** traverse it and #19 must be satisfied by mapping route identity → local access decision (as O2 already anticipated).
+
+**ESCALATED (2026-08-28, OpenAI plugin auth guide).** The connector path mandates OAuth 2.1, verbatim:
+> "For an authenticated MCP server, you are expected to implement an **OAuth 2.1 flow that conforms to the MCP authorization spec**."
+
+Required server-side surface: `/.well-known/oauth-protected-resource` (protected-resource metadata) **and** an OAuth 2.0/OIDC Authorization Server Metadata endpoint; client identification via CIMD (preferred), DCR, or a predefined client.
+
+The doc's only stated escape hatch is anonymity —
+> "Many plugin MCP servers can operate in a read-only, anonymous mode, but anything that exposes customer-specific data or write actions should authenticate users."
+
+— which is **categorically unavailable to WhatsVault**: the surface returns private message history, so anonymous mode is excluded by the project's own posture (§5, #19). Therefore, on the direct-connector path, 2b requires **building an OAuth 2.1 authorization server into a local personal daemon**. That is materially larger than the Phase-2a `hmac.compare_digest` bearer check and is a NEW, previously unscoped 2b work item.
+
+**RESOLVED AGAINST US (2026-08-28, Secure MCP Tunnel guide).** The tunnel does **not** supply the auth binding — the server behind it still needs its own authorization server, verbatim:
+> "The authorization server itself is **not automatically tunneled**. If it is unreachable from the public internet and from the `tunnel-client` host, the OAuth flow can still fail even when the MCP server is reachable."
+
+Tunnel mechanics: the `tunnel-client` authenticates to OpenAI's control plane with a **Platform API key** (`CONTROL_PLANE_API_KEY="sk-..."`); tunnels are created in Platform settings (`platform.openai.com/settings/organization/tunnels`), not by the CLI; and > "A tunnel can be associated with one or more Platform organizations or ChatGPT workspaces." So tunnel *reachability* is org/workspace-scoped — that is an access fence, **not** a caller-identity binding to the MCP surface. #19 is therefore NOT satisfied by the tunnel alone.
+
+**Net O2 position:** the ChatGPT route requires WhatsVault to stand up an **OAuth 2.1 authorization server**. The Phase-2a Keychain bearer token (`hmac.compare_digest`, #19) does not satisfy it, and anonymous mode is excluded because the surface returns private message history.
+
+**ONE TESTABLE UNKNOWN REMAINS (do not resolve by reading — it needs a test):** whether a **loopback-only** AS suffices. The OAuth authorization leg is browser-driven, and the browser runs on the same Mac as the daemon, so a `127.0.0.1` authorization endpoint may well be reachable *by the browser* even though it is unreachable from the public internet. The doc's wording ("unreachable from the public internet **and** from the tunnel-client host") is ambiguous on this exact case. If a loopback AS works, 2b stays local and the topology invariant holds. If it does not, 2b would require a **publicly reachable** authorization server — which is in direct tension with the project's no-public-surface premise and should be treated as a potential 2b STOP-SHIP, not a task.
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt , https://developers.openai.com/plugins/build/auth , https://developers.openai.com/api/docs/guides/secure-mcp-tunnels (all in-session 2026-08-28).
 **Security consequence:** an unauthenticated route would let any party reaching the tunnel read message history.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** OpenAI changes the auth model for the route.
@@ -261,9 +290,15 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** the Phase 2a MCP surface must be callable; tool-annotation support determines what ChatGPT can invoke.
 **Required evidence:** OpenAI doc on tool support for the route; a test tool call against the loopback surface; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
-**Security consequence:** none direct; a gap here limits functionality, not safety.
+**Observed result:** DOC-CONFIRMED (2026-08-28), four findings, all NEW:
+1. **No mandatory tool names.** > "Are search and fetch tools required for connected servers? **No. They are no longer required.**" — the Phase-2a surface naming is unconstrained.
+2. **Frozen tool snapshot.** > "After an admin first approves an MCP app for the workspace, ChatGPT uses a 'frozen' snapshot of its available tools and inputs. Changes made later by the app's developer are not applied until an admin reviews and publishes an update." AND > "If the live app no longer matches the frozen snapshot, tool calls can error." **Consequence: adding the Phase-4 prepare tools later is not a hot change — it needs an admin refresh/republish.** On Business plans, > "apps cannot be updated after publishing at launch... you must recreate and republish."
+3. **Web only.** > "Are MCP apps available on mobile? **No - web only.**" — WhatsVault-via-ChatGPT is desktop-web only; this does not affect the iOS approval app (separate path).
+4. **Agent/deep-research limits.** > "Agent mode will not use custom apps. Deep research can use custom apps, but for read/fetch actions only - not for write actions."
+A live tool call against the loopback surface is still UNRUN (needs 2b transport + tunnel).
+5. **Private use needs no submission.** (2026-08-28, plugin connect guide) > "Use **Secure MCP Tunnel** to connect a private MCP server in developer mode **without exposing the server to the public internet**. A development tunnel or another HTTPS forwarding service can also provide an endpoint for local testing." The "reachable through a public HTTPS endpoint" requirement applies to **submission** to the public plugin directory only. **WhatsVault must never be submitted or published** — it is a personal message vault; the directory path is out of scope and should be recorded as a non-goal. Developer-mode availability "can depend on account and workspace policy" (still plan-gated, consistent with O1).
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt (in-session 2026-08-28).
+**Security consequence:** none direct; a gap here limits functionality, not safety. (But see O4 — finding 2's frozen-snapshot behaviour means a *silently stale* tool definition errors rather than misfires, which is the safe failure direction.)
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** OpenAI changes tool support.
 
@@ -271,9 +306,12 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** INV-CONTENT / #24 — using ChatGPT with WhatsVault intentionally discloses the selected plaintext excerpts to the configured LLM service. The user must consent to this boundary before it goes live.
 **Required evidence:** the disclosure invariant recorded in the spec + a written user acknowledgement; OpenAI data-use terms quote; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
-**Security consequence:** selected plaintext excerpts leave the Mac and reach OpenAI — intentional, but it must be explicit and acknowledged, not implicit.
+**Observed result:** PARTIAL (2026-08-28) — one NEW disclosure surface found that #24 does not currently name. Verbatim:
+> "User conversations — including those using any app — are available in the **Compliance API** for Enterprise/Edu customers."
+
+CONSEQUENCE: on Enterprise/Edu the disclosure boundary is **wider than "excerpts reach OpenAI"** — selected WhatsApp plaintext excerpts also become retrievable by the *workspace's own admins* via the Compliance API. For a personal-message vault this is a materially different consent question from the Pro/individual case. #24 should be amended to name it before 2b goes live. STILL UNFILLED: OpenAI data-use terms quote, and Raouf's written acknowledgement.
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt (in-session 2026-08-28).
+**Security consequence:** selected plaintext excerpts leave the Mac and reach OpenAI — intentional, but it must be explicit and acknowledged, not implicit. **Additionally (new): on Enterprise/Edu those excerpts are exposed to workspace admins through the Compliance API.**
 **Decision:** PROCEED (user acknowledges the disclosure) / BLOCK (if not acceptable) / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** OpenAI changes its data-use terms, or the disclosure scope widens.
 
@@ -286,6 +324,6 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 | 1 — Coexistence | V1, V2, V3 | _(unfilled)_ | PROCEED / BLOCK |
 | 2 — Meta contract | **Blocking:** V4, V7, V12. **Compatibility/fallback:** V5, V6, V8, V9, V10, V11, V13 — V10 may still block free-form/template *production use* until understood (not the whole contract); V8 → manual-only fallback | _(unfilled)_ | PROCEED / BLOCK |
 | 3 — Cloudflare | V14.1, V14.3, V14.4, V14.5 (V14.2/V14.6 non-blocking) | _(unfilled)_ | PROCEED / BLOCK |
-| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | _(unfilled)_ | PROCEED / FALLBACK / BLOCK |
+| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / plan tier UNKNOWN; **O2 ESCALATED — connector path mandates OAuth 2.1; bearer token insufficient; anonymous mode excluded; tunnel confirmed NOT to supply the binding. Open: does a loopback-only AS suffice (needs a test)? If not → potential 2b STOP-SHIP**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
 
 **Activation is permitted only per-gate, only when that gate's blocking items are `YES` with evidence.** A NO on Gate 1 pauses the entire write path; the read/vault half (already shipped) is unaffected. Gate 4 is independent of Gates 1–3.
