@@ -129,7 +129,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Observed result:** _(unfilled)_
 **Raw evidence reference:** _(unfilled)_
 **Security consequence:** if Meta does not enforce the window, the local `control.db` projection remains the sole gate (it already is) — verify it is never bypassed.
-**Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
+**Classification:** compatibility/fallback (P1/P2 policy is deliberately local + send-authoritative).
+**Decision:** FALLBACK REQUIRED — revise the Meta adapter/policy compatibility before affected free-form/template sends; may block free-form/template **production use** until understood, but does NOT block the Meta contract or invalidate approval cryptography _(unfilled)_
 **Reverification trigger:** Meta changes the window/template policy.
 
 ### V11 — Confirm Coexistence numbers cannot send to / are not delivered group messages via the API.
@@ -138,8 +139,9 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Required evidence:** provider doc quote; date.
 **Observed result:** _(unfilled)_
 **Raw evidence reference:** _(unfilled)_
-**Security consequence:** a group send path would break the single-recipient binding assumptions of the approval payload.
-**Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
+**Security consequence:** none to activation. Groups are excluded and enforced **locally** regardless of Meta: `write_capable=false` + `conversation_type=group` → deny. Unexpected Meta group support is a useful compatibility finding, not a dependency.
+**Classification:** compatibility (non-blocking).
+**Decision:** PROCEED — record the finding; keep enforcing the local group-deny _(unfilled)_
 **Reverification trigger:** Meta adds group support to Coexistence.
 
 ### V12 — Is the runtime messaging scope (`whatsapp_business_messaging`) separable from the management scope (`whatsapp_business_management`)?
@@ -158,8 +160,9 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Required evidence:** primary Meta doc quote with the exact figure (reported ~30 days); date.
 **Observed result:** _(unfilled)_
 **Raw evidence reference:** _(unfilled)_
-**Security consequence:** operational (media availability), not confidentiality.
-**Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
+**Security consequence:** operational (media availability), not confidentiality — a shorter figure tightens the media-materialisation deadline, not send safety.
+**Classification:** operational (non-blocking for Meta activation).
+**Decision:** PROCEED — feed the figure into `retention.assess`/materialisation policy; does not gate signed sends _(unfilled)_
 **Reverification trigger:** Meta changes content retention.
 
 ---
@@ -171,8 +174,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** #3 — the Worker admits bodies ≤1 MB but a queue message caps at ~128 KB, so an oversized sealed body must spill to R2 (V14.5). A wrong assumption silently drops events.
 **Required evidence:** current Cloudflare Queues limits doc quote; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** DOC-CONFIRMED (2026-08-28): Queues per-message max size = **128 KB** (account-independent); retries max = 100. The R2 oversized-ciphertext spill (#3) is therefore mandatory.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/platform/limits/ (verified 2026-08-28).
 **Security consequence:** silent event loss if a sealed body exceeds the cap without the R2 path.
 **Decision:** PROCEED (R2 spill implemented) / BLOCK (no spill) / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes queue message limits.
@@ -181,18 +184,18 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** #4 — retry/DLQ config belongs to the consumer configuration.
 **Required evidence:** current pull-consumer configuration doc; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** DOC-CONFIRMED (2026-08-28): HTTP pull consumers must be **enabled separately** (Wrangler config-file enabling is no longer supported); retry/DLQ config belongs to the **consumer** configuration.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/pull-consumers/ (verified 2026-08-28).
 **Security consequence:** mis-placed config could disable retries/DLQ, losing transient-failure events.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes consumer configuration.
 
 ### V14.3 — Confirm an edge DLQ with NO active consumer retains only ~4 days.
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
-**Why it matters:** #4 — merely defining a DLQ does not give the intended 14-day net; an explicit edge-DLQ drainer/consumer is required.
+**Why it matters:** #4 — a DLQ is itself a queue; naming one is insufficient. An explicit edge-DLQ **consumption/recovery design is required, with the DLQ's own configured retention independently verified** — do not assume a drainer/consumer implies infinite (or 14-day) retention.
 **Required evidence:** DLQ retention doc quote; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** DOC-CONFIRMED (2026-08-28): DLQ configuration belongs to the **consumer**; a DLQ with **no active consumer retains messages only ~4 days**. ACCOUNT-SPECIFIC PENDING: the edge-DLQ consumption/recovery design + its own configured retention.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/dead-letter-queues/ (verified 2026-08-28).
 **Security consequence:** silent loss of quarantined events past ~4 days without a drainer.
 **Decision:** PROCEED (drainer built) / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes DLQ retention.
@@ -201,8 +204,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** the INV-ACK durability window; `retention.assess` bands (#39).
 **Required evidence:** Queues retention doc quote + the account's plan tier; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** DOC-CONFIRMED (2026-08-28): Free tier retention = 24h; **paid retention configurable up to 14 days**. ACCOUNT-SPECIFIC UNCONFIRMED: whether THIS account's queue is actually configured for 14 days.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/platform/limits/ (verified 2026-08-28); account queue config pending.
 **Security consequence:** a shorter-than-assumed window shortens the offline-Mac tolerance before loss.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes retention or the account plan changes.
@@ -235,17 +238,17 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 ### O1 — What is the actual supported route to connect a private/local MCP to ChatGPT?
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** 2b activation (#18). ChatGPT does not simply connect to arbitrary local MCP servers; a supported route (Developer Mode / Secure MCP Tunnel / remote MCP) is required, and product-plan support varies.
-**Required evidence:** OpenAI help/doc quote naming the supported route; product-plan eligibility; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Required evidence:** OpenAI help/doc quote naming the supported route; **the intended account's actual plan tested against the currently-supported MCP modes** (not merely proof that the route exists); date. If the account's plan is not currently listed as supporting the required MCP mode, O1 is `BLOCKED` even though the technical route exists.
+**Observed result:** DOC-CONFIRMED (2026-08-28, OpenAI Help): ChatGPT cannot connect directly to a local MCP; **Secure MCP Tunnel** is the documented private/local/developer-machine route; full MCP incl. modify/write actions is currently rolling out for **Business/Enterprise/Edu**; **Pro** can use custom MCPs with **read/fetch** permissions in Developer Mode. ACCOUNT-SPECIFIC UNCONFIRMED: whether the intended account's plan supports the required MCP mode (if read-only Pro but write tools are needed later → BLOCKED for write; read surface may still proceed).
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461 (verified 2026-08-28) — account/plan confirmation pending.
 **Security consequence:** an unsupported or insecure route could expose the loopback MCP surface (private message history) beyond the intended boundary.
 **Decision:** PROCEED (supported route) / FALLBACK REQUIRED (OpenAI Responses API remote-MCP) / BLOCK _(unfilled)_
 **Reverification trigger:** OpenAI changes MCP connectivity or product-plan support.
 
 ### O2 — How is the connection authenticated, and does it satisfy the loopback-auth requirement (#19)?
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
-**Why it matters:** #19 — 127.0.0.1 is not an auth boundary; the tunnel/route must carry the Keychain bearer token (or a UDS-equivalent).
-**Required evidence:** OpenAI doc on auth for the chosen route; confirmation the bearer token is carried end-to-end; date.
+**Why it matters (requirement, mechanism-agnostic):** the selected route MUST provide an authenticated binding from the authorised ChatGPT connection to the local WhatsVault MCP, and MUST prevent unauthorised local or tunnel clients from invoking it. The existing Keychain-backed bearer token MAY be used where the selected route supports it; otherwise the route's authenticated identity MUST be mapped to the same local access decision (#19). Verify the *actual* mechanism the route provides — do not assume the local bearer token literally traverses it.
+**Required evidence:** OpenAI doc on the chosen route's authentication model; a test proving an unauthorised local/tunnel client cannot invoke the MCP; the mapping used (bearer token, or route-identity → local access decision); date.
 **Observed result:** _(unfilled)_
 **Raw evidence reference:** _(unfilled)_
 **Security consequence:** an unauthenticated route would let any party reaching the tunnel read message history.
@@ -279,7 +282,7 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 | Gate | Blocking items | Status | Decision |
 |------|----------------|--------|----------|
 | 1 — Coexistence | V1, V2, V3 | _(unfilled)_ | PROCEED / BLOCK |
-| 2 — Meta contract | V4, V7, V10, V11, V12, V13 (V5/V6/V9 non-blocking; V8 → FALLBACK not BLOCK) | _(unfilled)_ | PROCEED / BLOCK |
+| 2 — Meta contract | **Blocking:** V4, V7, V12. **Compatibility/fallback:** V5, V6, V8, V9, V10, V11, V13 — V10 may still block free-form/template *production use* until understood (not the whole contract); V8 → manual-only fallback | _(unfilled)_ | PROCEED / BLOCK |
 | 3 — Cloudflare | V14.1, V14.3, V14.4, V14.5 (V14.2/V14.6 non-blocking) | _(unfilled)_ | PROCEED / BLOCK |
 | 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | _(unfilled)_ | PROCEED / FALLBACK / BLOCK |
 
