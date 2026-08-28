@@ -5,7 +5,7 @@
 [![CI](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml/badge.svg)](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-411%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-529%20passing-brightgreen.svg)](#testing)
 
 WhatsVault ingests your WhatsApp messages into an encrypted SQLCipher vault on your own Mac, indexes them for fast bilingual (English/Persian) search, and exposes a **strictly read-only** [MCP](https://modelcontextprotocol.io) surface so an assistant like ChatGPT or Claude can search and quote them.
 
@@ -137,7 +137,7 @@ make secrets    # fail if anything secret-shaped is tracked
 make test-cov   # with a coverage report
 ```
 
-411 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
+529 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
 
 ## Project status
 

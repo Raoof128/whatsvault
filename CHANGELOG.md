@@ -12,9 +12,85 @@ lives in the commit message, and the design rationale in
 
 ## [Unreleased]
 
-Running the documented commands end to end — rather than reading them — found six
-defects that the 397-test suite could not see, because every one of them lived in
-a seam between layers that were each individually correct and individually tested.
+Two rounds of the same lesson. First, running the documented commands end to end
+— rather than reading them — found six defects the 397-test suite could not see.
+Then publishing the vault behind an OAuth server, and attacking it, found
+nineteen more in code that was one commit old. Every one lived in a seam between
+layers that were each individually correct and individually tested.
+
+### Added — public deployment
+
+- **OAuth 2.1 authorization server** (`whatsvault.mcp.oauth`, `oauth_http`),
+  mounted only when `WHATSVAULT_PUBLIC_URL` is set. ChatGPT's connector dialog
+  offers OAuth, No Authentication or Mixed, so a static bearer token fits none of
+  them and reaching the vault from ChatGPT needs an authorization server. RFC
+  8414 / 9728 metadata, RFC 7591 dynamic client registration, PKCE `S256` only,
+  exact-match https redirect URIs, single-use 60-second codes, rotating refresh
+  tokens, SHA-256 hashing of every code and token at rest.
+- **Out-of-band approval.** The consent page has no form and no password field;
+  it shows a code and polls. `whatsvault oauth-pending`, `oauth-approve` and
+  `oauth-revoke` are the only way a grant is ever made. A public form accepting a
+  secret is a phishing and brute-force target, and approval here belongs on a
+  channel the requester cannot reach — the same reason sending needs the phone.
+- `whatsvault accounts-add`, `accounts-list`, `conversations-add`,
+  `conversations-list`. `import` refuses to guess its target, but nothing created
+  an account or conversation, so the IDs it demands could not be obtained and the
+  documented import was unreachable on every new vault.
+- `tests/conftest.py`: fails any test that writes to the operator's real vault.
+- Live-transport tool tests, and two adversarial suites for the OAuth grant
+  machinery and for what changes by publishing.
+
+### Fixed
+
+- **Every database-backed MCP tool failed on the running server.** Connections
+  are opened on the main thread; the SDK dispatches handlers onto a worker
+  thread. Now opened with `check_same_thread=False` and serialised on one lock,
+  with a thread-pinned connection refused at startup rather than turning every
+  call into an opaque 500.
+- **`search` had never worked over MCP.** The handler declared a `SearchQuery`
+  parameter; a client sends JSON, so it arrived as a string and every call raised.
+- **`whatsvault init` could not run**, and **never migrated an existing vault** —
+  a shipped migration reached no database that already existed, so a live vault
+  worked until a query hit `no such table`. `doctor` gained a `schema_current`
+  check so the drift is never silent.
+- **The launchd install pointed at a venv nothing created**, so `launchctl load`
+  would spawn a missing binary.
+- **`init` under-reported its own work**, naming two keys where it minted four —
+  omitting the pair whose loss is unrecoverable.
+- **DNS-rebinding protection rejected the published host**, so a correctly
+  authenticated token still got `421`. Fixed by naming the host, never by
+  weakening the check.
+- Console scripts now resolve, and `main()` returns its exit code instead of
+  raising `SystemExit`, which reported success for every failure.
+
+### Security
+
+- **The MCP result cap could be lifted with `limit: -1`** — SQLite treats
+  `LIMIT -1` as unbounded, so one call could drain the table.
+- **`get_conversation_window` took `now_ms` from the caller**, letting the model
+  assert the time that decides whether a send window is open.
+- **Every unauthenticated OAuth endpoint was unbounded** — `state`,
+  `code_challenge` and `redirect_uris` were stored verbatim, so a loop of
+  authorize calls wrote as much as the caller liked into the operator's database.
+  Capped, throttled, and expired rows collected.
+- **Grants were not audited.** Tool calls were; the grant authorising them was
+  not, so after an incident there was no answer to "who was given access, and
+  when".
+- **Refresh rotation contained nothing** — the replaced access token stayed live
+  for its full hour — and **reuse of a rotated refresh token only failed the
+  call**, leaving the thief's newer pair working. The whole grant family is now
+  revoked, per OAuth 2.1 §4.14.2.
+- **The consent page escaped only `<`.** Now `html.escape` plus stripping
+  Cf-category characters: a right-to-left override can make a hostile client name
+  read as a familiar one in the sentence asking for consent. The page carries a
+  CSP with `frame-ancestors 'none'`, `referrer-policy: no-referrer` so a code
+  cannot leak in a `Referer`, and `nosniff`.
+- OAuth discovery paths answer `404`, not the gate's `401` — clients parse an
+  error body as protected-resource metadata.
+
+---
+
+The 0.1.0 sections below record the first round.
 
 ### Added
 
