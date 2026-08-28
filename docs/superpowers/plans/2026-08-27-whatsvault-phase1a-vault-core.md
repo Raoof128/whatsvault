@@ -114,7 +114,7 @@ imports/
 The `sqlcipher3` binding is a **source build** against the SQLCipher C library. `sqlcipher3-binary` has no wheel for this target (macOS arm64) — do not use it. Force the source build against Homebrew's SQLCipher so the crypto provider is known (verified: cipher_version `4.12.0 community`, provider `openssl`; a fresh Homebrew installs a newer 4.x — the gate reads the version at runtime, it is not hardcoded):
 ```bash
 brew install sqlcipher
-cd /Users/raoof.r12/Desktop/Raouf/WhatsVault
+cd /path/to/WhatsVault
 python3 -m venv .venv
 SQLCIPHER_PREFIX="$(brew --prefix sqlcipher)"
 C_INCLUDE_PATH="$SQLCIPHER_PREFIX/include" LIBRARY_PATH="$SQLCIPHER_PREFIX/lib" \

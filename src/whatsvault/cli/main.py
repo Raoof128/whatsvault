@@ -6,8 +6,21 @@ import sys
 
 from . import commands
 
-_OPT_FLAGS = ["--device-id", "--job-id", "--candidate-id", "--decision", "--dlq-id", "--path"]
-_BOOL_FLAGS = ["--reveal"]
+_OPT_FLAGS = [
+    "--device-id",
+    "--job-id",
+    "--candidate-id",
+    "--decision",
+    "--dlq-id",
+    "--path",
+    "--conversation-id",
+    "--account-id",
+    "--visibility",
+    "--timezone",
+    "--date-format",
+    "--self-label",
+]
+_BOOL_FLAGS = ["--reveal", "--dry-run"]
 
 
 def build_parser() -> argparse.ArgumentParser:

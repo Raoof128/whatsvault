@@ -3,10 +3,14 @@ inspect, recover, administer. NONE creates approval authority: there is no appro
 sign/mint verb, and no handler drives the sender write path or the capability grant store.
 Approval authority is the phone's Secure Enclave signature (Phase 4)."""
 
+import hashlib
+from pathlib import Path
+
 from .. import doctor
 from ..approval import devices, reconcile
 from ..crypto import keystore
-from ..mcp import audit, auth
+from ..importers import whatsapp_export
+from ..mcp import acl, audit, auth
 from ..ops import health
 
 FORBIDDEN_VERBS = frozenset(
@@ -82,6 +86,73 @@ def cmd_mcp_provision(ctx, args):
             "(avoid doing so where stdout is captured to a log)"
         )
     return out
+
+
+def cmd_import(ctx, args):
+    """Import a WhatsApp text export into the vault.
+
+    Evidence-only: an import writes to vault.db and can never touch control.db,
+    so an imported timestamp cannot reopen the 24-hour send window (INV-IMPORT).
+    A dry run is performed first so the caller sees what would be written.
+    """
+    path = args.get("path")
+    if not path:
+        return {"ok": False, "error": "--path is required"}
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        return {"ok": False, "error": f"cannot read {path}: {exc}"}
+
+    tz_name = args.get("timezone") or "UTC"
+    date_format = args.get("date_format") or "DMY"
+    label = args.get("self_label") or "Me"
+    preview = whatsapp_export.dry_run(text, date_format, tz_name, self_participant_label=label)
+    if args.get("dry_run"):
+        return {"ok": True, "dry_run": True, **preview}
+
+    conversation_id = args.get("conversation_id")
+    account_id = args.get("account_id")
+    if not conversation_id or not account_id:
+        return {
+            "ok": False,
+            "error": "--conversation-id and --account-id are required (use --dry-run to preview)",
+        }
+    result = whatsapp_export.import_batch(
+        ctx.vault,
+        text,
+        source_sha256=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        date_format=date_format,
+        tz_name=tz_name,
+        conversation_id=conversation_id,
+        account_id=account_id,
+        self_participant_label=label,
+    )
+    return {"ok": True, **result}
+
+
+def cmd_import_undo(ctx, args):
+    """Reverse one import batch using its recorded provenance."""
+    batch_id = args.get("job_id")
+    if not batch_id:
+        return {"ok": False, "error": "--job-id is required"}
+    return {"ok": True, **whatsapp_export.undo_batch(ctx.vault, batch_id)}
+
+
+def cmd_mcp_visibility(ctx, args):
+    """Fence a conversation from the MCP surface, or unfence it.
+
+    CLI/phone only by design: `set_mcp_visibility` is in the MCP forbidden set,
+    so a model can never widen its own visibility (ledger #23).
+    """
+    conversation_id = args.get("conversation_id")
+    visibility = args.get("visibility")
+    if not conversation_id or not visibility:
+        return {"ok": False, "error": "--conversation-id and --visibility are required"}
+    try:
+        acl.set_visibility(ctx.vault, conversation_id, visibility)
+    except ValueError as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "conversation_id": conversation_id, "visibility": visibility}
 
 
 def cmd_health(ctx, args):
@@ -181,6 +252,9 @@ def cmd_scheduler_disable(ctx, args):
 COMMANDS = {
     "doctor": cmd_doctor,
     "mcp-provision": cmd_mcp_provision,
+    "mcp-visibility": cmd_mcp_visibility,
+    "import": cmd_import,
+    "import-undo": cmd_import_undo,
     "health": cmd_health,
     "devices-list": cmd_devices_list,
     "devices-revoke": cmd_devices_revoke,
