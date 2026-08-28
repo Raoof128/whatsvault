@@ -68,11 +68,22 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
     def guard(tool_name, fn):
         @functools.wraps(fn)          # keeps the real signature for schema generation
         def handler(*args, **kwargs):
-            bound = inspect.signature(fn).bind(*args, **kwargs)
-            audit.record(control_conn, audit_key, actor="mcp", tool=tool_name,
-                         args=_json_safe(dict(bound.arguments)), outcome="ok",
-                         now_ms=int(time.time() * 1000))
-            return fn(*args, **kwargs)
+            try:
+                bound = inspect.signature(fn).bind(*args, **kwargs)
+                recorded = _json_safe(dict(bound.arguments))
+            except TypeError:
+                recorded = {"_wv_unbindable": True}
+            outcome = "ok"
+            try:
+                return fn(*args, **kwargs)
+            except BaseException as exc:                # audit the failure, then re-raise
+                outcome = f"error:{type(exc).__name__}"
+                raise
+            finally:
+                # Recorded AFTER the call so the outcome is the real one: a probe
+                # that errors must not leave a clean trail (§5.8).
+                audit.record(control_conn, audit_key, actor="mcp", tool=tool_name,
+                             args=recorded, outcome=outcome, now_ms=int(time.time() * 1000))
         return handler
 
     return {
@@ -82,7 +93,7 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
         "list_chats": guard("list_chats", lambda query=None, limit=20: reads.list_chats(vault_conn, query, limit)),
         "get_message_status": guard("get_message_status", lambda message_id: reads.get_message_status(vault_conn, message_id)),
         "get_conversation_window": guard("get_conversation_window", lambda conversation_id, now_ms:
-                                         reads.get_conversation_window(control_conn, conversation_id, now_ms)),
+                                         reads.get_conversation_window(control_conn, vault_conn, conversation_id, now_ms)),
         "list_templates": guard("list_templates", lambda: reads.list_templates(control_conn)),
     }
 

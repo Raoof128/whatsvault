@@ -34,14 +34,15 @@ class BearerAuthMiddleware:
         return await self._app(scope, receive, send)
 
     def _authorised(self, scope) -> bool:
-        for name, value in scope.get("headers") or ():
-            if name.lower() != b"authorization":
-                continue
-            scheme, _, provided = value.decode("latin-1").partition(" ")
-            if scheme.lower() != "bearer":
-                return False
-            return auth.require_token(provided.strip(), self._token)
-        return False
+        found = [v for k, v in (scope.get("headers") or ()) if k.lower() == b"authorization"]
+        # Ambiguous credentials fail closed rather than first-wins: an injected or
+        # proxy-appended second header must never be silently ignored.
+        if len(found) != 1:
+            return False
+        scheme, _, provided = found[0].decode("latin-1").partition(" ")
+        if scheme.lower() != "bearer":
+            return False
+        return auth.require_token(provided.strip(), self._token)
 
     async def _reject(self, send) -> None:
         await send({

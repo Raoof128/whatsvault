@@ -10,6 +10,16 @@ WINDOW_MS = 24 * 3600 * 1000
 MAX_LIMIT = 200
 
 
+def _clamp(limit) -> int:
+    """min(limit, MAX_LIMIT) is not a cap: SQLite treats LIMIT -1 as unbounded,
+    so a negative value returned the whole table. Clamp both ends."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        raise ValueError("limit must be an integer")
+    return max(1, min(n, MAX_LIMIT))
+
+
 def _contact(vault_conn, contact_id):
     if not contact_id:
         return None
@@ -47,7 +57,7 @@ def get_messages(vault_conn, conversation_id, from_ms=None, to_ms=None, limit=50
     if to_ms is not None:
         preds.append("ts_lower_ms < ?"); params.append(to_ms)
     sql = "SELECT * FROM messages WHERE " + " AND ".join(preds) + " ORDER BY ts_lower_ms, id LIMIT ?"
-    rows = vault_conn.execute(sql, params + [min(limit, MAX_LIMIT)]).fetchall()
+    rows = vault_conn.execute(sql, params + [_clamp(limit)]).fetchall()
     return [_view(vault_conn, m) for m in rows]
 
 
@@ -58,7 +68,7 @@ def list_chats(vault_conn, query=None, limit=20) -> list:
         preds.append("subject LIKE ?"); params.append(f"%{query}%")
     sql = ("SELECT id, type, subject, last_message_ms FROM conversations WHERE "
            + " AND ".join(preds) + " ORDER BY last_message_ms DESC LIMIT ?")
-    rows = vault_conn.execute(sql, params + [min(limit, MAX_LIMIT)]).fetchall()
+    rows = vault_conn.execute(sql, params + [_clamp(limit)]).fetchall()
     return [{"conversation_id": r["id"], "type": r["type"],
              "subject": present.untrusted(r["subject"]), "last_message_ms": r["last_message_ms"]}
             for r in rows]
@@ -79,7 +89,12 @@ def get_message_status(vault_conn, message_id):
     return reduce_status(events)
 
 
-def get_conversation_window(control_conn, conversation_id, now_ms) -> dict:
+def get_conversation_window(control_conn, vault_conn, conversation_id, now_ms) -> dict:
+    """LOCAL_ONLY fence applies here too (#23): activity timing is content. A
+    caller must not learn when a conversation marked private last received a
+    message, so a fenced conversation is indistinguishable from an idle one."""
+    if conversation_id in acl.local_only_ids(vault_conn):
+        return {"open": False, "last_inbound_ms": 0, "closes_at_ms": WINDOW_MS}
     row = control_conn.execute("SELECT last_inbound_ms FROM conversation_windows WHERE conversation_id=?",
                                (conversation_id,)).fetchone()
     last = row[0] if row else 0

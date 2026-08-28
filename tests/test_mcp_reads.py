@@ -58,9 +58,9 @@ def test_conversation_window(tmp_path):
     ctrl = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(ctrl, "control")
     ctrl.execute("INSERT INTO conversation_windows(conversation_id, last_inbound_ms) VALUES('cnv', 1000)")
     ctrl.commit()
-    assert reads.get_conversation_window(ctrl, "cnv", 1000 + WINDOW - 1)["open"] is True
-    assert reads.get_conversation_window(ctrl, "cnv", 1000 + WINDOW + 1)["open"] is False
-    assert reads.get_conversation_window(ctrl, "none", 5)["open"] is False
+    assert reads.get_conversation_window(ctrl, conn, "cnv", 1000 + WINDOW - 1)["open"] is True
+    assert reads.get_conversation_window(ctrl, conn, "cnv", 1000 + WINDOW + 1)["open"] is False
+    assert reads.get_conversation_window(ctrl, conn, "none", 5)["open"] is False
 
 
 def test_list_templates_empty_after_phase5_schema(tmp_path):
