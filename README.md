@@ -157,6 +157,15 @@ The [Phase-0 verification record](docs/internal/findings/2026-08-27-phase0-verif
 | [Security policy](SECURITY.md) | Reporting, scope, and the invariants a finding should target |
 | [Internal records](docs/internal/) | Design spec, implementation plans, and the verification evidence behind the claims above |
 
+> **A note on `docs/internal/`.** Those are **working documents**, not polished
+> documentation — the design spec, the phase-by-phase implementation plans, and
+> the verification records, kept exactly as they were written while the work was
+> being done. They are published on purpose: a project that makes security claims
+> should be able to show how it reached them, including the corrections along the
+> way. They are also *historical*, so where one disagrees with the code, the code
+> and its tests are correct. For the maintained explanation of how the system
+> works, read [Architecture](docs/ARCHITECTURE.md) instead.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, the test-driven expectation, and the security-review bar for anything touching a boundary. By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
