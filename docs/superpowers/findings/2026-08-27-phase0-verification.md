@@ -248,7 +248,14 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 
 > "Apps, full MCP support, and developer mode are available for ChatGPT Business and Enterprise/Edu customers **on ChatGPT web**."
 
-Route CONFIRMED (Secure MCP Tunnel). ACCOUNT-SPECIFIC STILL UNCONFIRMED: Raouf's plan tier is not yet recorded. Consequence is now precise — **on Pro the Phase-2a six-tool read surface is connectable, but the Phase-4 prepare/draft tools would NOT be invokable** (read/fetch only). Write-capable 2b requires Business/Enterprise/Edu.
+Route CONFIRMED (Secure MCP Tunnel). **PLAN TIER RECORDED (2026-08-28): Raouf is on ChatGPT Plus.** Plus IS eligible for developer mode — primary source `developers.openai.com/api/docs/guides/developer-mode`, verbatim:
+> "Available to **Pro, Plus**, Business, Enterprise, and Education accounts on the web."
+
+**DOC CONFLICT — UNRESOLVED, do not pick a side without a test.** Two OpenAI primary sources disagree on whether Plus can invoke *write* tools:
+- ChatGPT Help (updated ~2026-08-22): "Full MCP is only available to Business and Enterprise/Edu users, currently. Pro users can connect MCPs with read/fetch permissions in developer mode." (Plus is not named at all.)
+- Platform developer-mode guide: Plus is named as eligible, and "No per-plan differences are documented" for tool access.
+
+CONSEQUENCE: the **Phase-2a six-tool read surface is connectable on Plus** (both docs agree). Whether the **Phase-4 prepare/draft tools** would be invokable on Plus is GENUINELY UNKNOWN and must be settled by an actual test, not by reading. Do not scope the prepare-tool MCP registration for the ChatGPT path until that test runs.
 **Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt — read in-session 2026-08-28 via a real browser. NOTE: the earlier HTTP 403 was **bot-gating, not login-gating** — the page is public (it renders with a "Login" link present); the prior "login/bot-gated" characterisation is corrected. Secure MCP Tunnel's own guide (auth model, O2) is a SEPARATE unread doc: https://developers.openai.com/api/docs/guides/secure-mcp-tunnels
 **Security consequence:** an unsupported or insecure route could expose the loopback MCP surface (private message history) beyond the intended boundary.
 **Decision:** PROCEED (supported route) / FALLBACK REQUIRED (OpenAI Responses API remote-MCP) / BLOCK _(unfilled)_
@@ -263,25 +270,22 @@ Route CONFIRMED (Secure MCP Tunnel). ACCOUNT-SPECIFIC STILL UNCONFIRMED: Raouf's
 
 CONSEQUENCE FOR #19: WhatsVault's MCP currently authenticates with a **Keychain bearer token**, not OAuth. If the selected route requires OAuth, the bearer token does **not** traverse it and #19 must be satisfied by mapping route identity → local access decision (as O2 already anticipated).
 
-**ESCALATED (2026-08-28, OpenAI plugin auth guide).** The connector path mandates OAuth 2.1, verbatim:
-> "For an authenticated MCP server, you are expected to implement an **OAuth 2.1 flow that conforms to the MCP authorization spec**."
+**CORRECTION (2026-08-28, supersedes the OAuth-2.1 escalation recorded earlier the same day in commit 23cc6d1).** That escalation conflated two distinct OpenAI tracks and its stop-ship conclusion is WITHDRAWN:
+- **Plugin-directory submission** (`developers.openai.com/plugins/build/auth`) — mandates "an OAuth 2.1 flow that conforms to the MCP authorization spec". This track applies only to publishing to the public directory, which is a recorded NON-GOAL for WhatsVault. It does not bind us.
+- **Personal developer-mode connector** (`developers.openai.com/api/docs/guides/developer-mode`) — the track WhatsVault actually uses. Verbatim:
+> "Authentication supported: OAuth, No Authentication, and Mixed Authentication. **For OAuth, if static credentials are provided, then they will be used.** ... Mixed authentication supports OAuth and No Authentication. This means the initialize and list tools APIs use no auth, and tools use OAuth or no auth based on the security schemes set on their tool metadata."
 
-Required server-side surface: `/.well-known/oauth-protected-resource` (protected-resource metadata) **and** an OAuth 2.0/OIDC Authorization Server Metadata endpoint; client identification via CIMD (preferred), DCR, or a predefined client.
+**NET O2 POSITION (corrected):** no local OAuth 2.1 authorization server is required. **Static credentials are accepted**, so the existing Phase-2a Keychain bearer token (#19) is a plausible direct fit. The earlier "publicly reachable AS → potential 2b STOP-SHIP" branch is RETRACTED — it followed from the wrong track.
 
-The doc's only stated escape hatch is anonymity —
-> "Many plugin MCP servers can operate in a read-only, anonymous mode, but anything that exposes customer-specific data or write actions should authenticate users."
+**REMAINING O2 WORK (unchanged in kind, much smaller in size):**
+1. Verify empirically that the connector's static-credential field maps to an `Authorization` header the WhatsVault MCP can check with the existing `hmac.compare_digest` path. The docs do not state the header form — this is a test, not a doc read.
+2. **Do NOT select Mixed Authentication.** Under Mixed, "the initialize and list tools APIs use no auth" — an unauthenticated party reaching the tunnel could enumerate the tool surface. Content stays protected, but surface enumeration is a free reconnaissance gift. Use the fully-authenticated OAuth-with-static-credentials mode so every call is checked.
+3. The tunnel finding STANDS and is unaffected by this correction: the tunnel is an org/workspace reachability fence, not a caller-identity binding, so server-side auth remains mandatory (#19). Never run this surface with "No Authentication".
+4. The unauthorised-client test O2 requires is still UNRUN.
 
-— which is **categorically unavailable to WhatsVault**: the surface returns private message history, so anonymous mode is excluded by the project's own posture (§5, #19). Therefore, on the direct-connector path, 2b requires **building an OAuth 2.1 authorization server into a local personal daemon**. That is materially larger than the Phase-2a `hmac.compare_digest` bearer check and is a NEW, previously unscoped 2b work item.
+**Tunnel mechanics (unchanged, still accurate):** `tunnel-client` authenticates to OpenAI's control plane with a Platform API key (`CONTROL_PLANE_API_KEY="sk-..."`); tunnels are created in Platform settings, not by the CLI; "A tunnel can be associated with one or more Platform organizations or ChatGPT workspaces." NOTE: this implies a **Platform (API) account** alongside the ChatGPT Plus subscription — unverified whether Plus alone provides the required Platform org access for tunnel creation. Flag as an open account-config question.
+**Raw evidence reference (corrected):** https://developers.openai.com/api/docs/guides/developer-mode (DECIDING SOURCE for the connector path), https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt , https://developers.openai.com/api/docs/guides/secure-mcp-tunnels , and https://developers.openai.com/plugins/build/auth (submission track only — NOT binding here). All in-session 2026-08-28.
 
-**RESOLVED AGAINST US (2026-08-28, Secure MCP Tunnel guide).** The tunnel does **not** supply the auth binding — the server behind it still needs its own authorization server, verbatim:
-> "The authorization server itself is **not automatically tunneled**. If it is unreachable from the public internet and from the `tunnel-client` host, the OAuth flow can still fail even when the MCP server is reachable."
-
-Tunnel mechanics: the `tunnel-client` authenticates to OpenAI's control plane with a **Platform API key** (`CONTROL_PLANE_API_KEY="sk-..."`); tunnels are created in Platform settings (`platform.openai.com/settings/organization/tunnels`), not by the CLI; and > "A tunnel can be associated with one or more Platform organizations or ChatGPT workspaces." So tunnel *reachability* is org/workspace-scoped — that is an access fence, **not** a caller-identity binding to the MCP surface. #19 is therefore NOT satisfied by the tunnel alone.
-
-**Net O2 position:** the ChatGPT route requires WhatsVault to stand up an **OAuth 2.1 authorization server**. The Phase-2a Keychain bearer token (`hmac.compare_digest`, #19) does not satisfy it, and anonymous mode is excluded because the surface returns private message history.
-
-**ONE TESTABLE UNKNOWN REMAINS (do not resolve by reading — it needs a test):** whether a **loopback-only** AS suffices. The OAuth authorization leg is browser-driven, and the browser runs on the same Mac as the daemon, so a `127.0.0.1` authorization endpoint may well be reachable *by the browser* even though it is unreachable from the public internet. The doc's wording ("unreachable from the public internet **and** from the tunnel-client host") is ambiguous on this exact case. If a loopback AS works, 2b stays local and the topology invariant holds. If it does not, 2b would require a **publicly reachable** authorization server — which is in direct tension with the project's no-public-surface premise and should be treated as a potential 2b STOP-SHIP, not a task.
-**Raw evidence reference:** https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt , https://developers.openai.com/plugins/build/auth , https://developers.openai.com/api/docs/guides/secure-mcp-tunnels (all in-session 2026-08-28).
 **Security consequence:** an unauthenticated route would let any party reaching the tunnel read message history.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** OpenAI changes the auth model for the route.
@@ -324,6 +328,6 @@ CONSEQUENCE: on Enterprise/Edu the disclosure boundary is **wider than "excerpts
 | 1 — Coexistence | V1, V2, V3 | _(unfilled)_ | PROCEED / BLOCK |
 | 2 — Meta contract | **Blocking:** V4, V7, V12. **Compatibility/fallback:** V5, V6, V8, V9, V10, V11, V13 — V10 may still block free-form/template *production use* until understood (not the whole contract); V8 → manual-only fallback | _(unfilled)_ | PROCEED / BLOCK |
 | 3 — Cloudflare | V14.1, V14.3, V14.4, V14.5 (V14.2/V14.6 non-blocking) | _(unfilled)_ | PROCEED / BLOCK |
-| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / plan tier UNKNOWN; **O2 ESCALATED — connector path mandates OAuth 2.1; bearer token insufficient; anonymous mode excluded; tunnel confirmed NOT to supply the binding. Open: does a loopback-only AS suffice (needs a test)? If not → potential 2b STOP-SHIP**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
+| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / **plan = Plus, eligible**; write-tool availability on Plus has CONFLICTING primary sources (needs test); **O2 DE-ESCALATED (correction) — dev-mode connector accepts STATIC CREDENTIALS; no OAuth 2.1 AS needed; bearer token is a plausible fit; earlier STOP-SHIP retracted. Tunnel still not an auth binding, so server-side auth stays mandatory; do NOT use Mixed or No Authentication**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
 
 **Activation is permitted only per-gate, only when that gate's blocking items are `YES` with evidence.** A NO on Gate 1 pauses the entire write path; the read/vault half (already shipped) is unaffected. Gate 4 is independent of Gates 1–3.
