@@ -198,6 +198,27 @@ def check_mcp(vault_conn, control_conn, ks=None) -> list[dict]:
             }
         )
 
+    # A database behind the shipped schema is silent until something touches the
+    # missing table, which is how the OAuth tables were found absent on a live
+    # vault. Say it out loud instead.
+    from .db import migrations as _migrations
+
+    for lane, conn in (("vault", vault_conn), ("control", control_conn)):
+        latest = max(n for n, _ in _migrations.MIGRATIONS[lane])
+        have = _migrations.user_version(conn)
+        if have < latest:
+            findings.append(
+                {
+                    "check": "schema_current",
+                    "ok": False,
+                    "detail": f"{lane}.db is at schema {have}, shipped is {latest}; "
+                    "run `whatsvault init` to migrate",
+                }
+            )
+            break
+    else:
+        findings.append({"check": "schema_current", "ok": True, "detail": "vault and control current"})
+
     if ks is not None:
         from .mcp import audit as _audit
         from .mcp import auth as _auth

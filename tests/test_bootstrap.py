@@ -196,3 +196,58 @@ def test_a_partial_vault_reports_only_the_missing_key(env):
     os.remove(p.vault_db)
     ks._d.pop(C.DB_KEY_NAMES["vault"])
     assert bootstrap.init_vault(p, ks)["keys_provisioned"] == [C.DB_KEY_NAMES["vault"]]
+
+
+# ---- an existing vault must receive newly shipped migrations -------------------
+def test_init_migrates_a_vault_created_by_an_earlier_version(env):
+    """`init` skipped any database that already existed, so a migration added
+    after a vault was created never reached it. The vault kept working until
+    something touched the new table, then failed with `no such table` on a live
+    system — which is exactly how the OAuth tables were found missing.
+
+    Forward-only migration of an existing database is the safe, idempotent
+    operation the runner is built for; skipping it was never protecting anything.
+    """
+    p, ks = env
+    bootstrap.init_vault(p, ks)
+    control = C.open_existing("control", p.control_db, ks)
+    latest = max(n for n, _ in M.MIGRATIONS["control"])
+
+    # rewind to an older schema, as a vault created by an earlier release would be
+    control.execute("DROP TABLE IF EXISTS oauth_tokens")
+    control.execute("DROP TABLE IF EXISTS oauth_codes")
+    control.execute("DROP TABLE IF EXISTS oauth_pending")
+    control.execute("DROP TABLE IF EXISTS oauth_clients")
+    control.execute(f"PRAGMA user_version = {latest - 1}")
+    control.commit()
+    control.close()
+
+    out = bootstrap.init_vault(p, ks)
+    assert out["ok"] is True
+    assert out["migrated"] == ["control"], out
+
+    control = C.open_existing("control", p.control_db, ks)
+    assert M.user_version(control) == latest
+    assert control.execute("SELECT COUNT(*) FROM oauth_pending").fetchone()[0] == 0
+
+
+def test_a_vault_already_current_reports_no_migration(env):
+    p, ks = env
+    bootstrap.init_vault(p, ks)
+    assert bootstrap.init_vault(p, ks)["migrated"] == []
+
+
+def test_doctor_reports_a_database_behind_the_shipped_schema(env):
+    """Silence is what made this expensive: the vault looked healthy right up to
+    the moment a query hit the missing table."""
+    from whatsvault import doctor
+
+    p, ks = env
+    bootstrap.init_vault(p, ks)
+    control = C.open_existing("control", p.control_db, ks)
+    control.execute("PRAGMA user_version = 1")
+    control.commit()
+    vault = C.open_existing("vault", p.vault_db, ks)
+    checks = {c["check"]: c for c in doctor.check_mcp(vault, control)}
+    assert checks["schema_current"]["ok"] is False
+    assert "init" in checks["schema_current"]["detail"]

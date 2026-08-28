@@ -38,6 +38,40 @@ def _stranded(ks, paths) -> list[str]:
     return out
 
 
+def _ensure_database(kind: str, path: str, ks):
+    """Bring one database into existence and up to the shipped schema.
+
+    Returns (state, key_name_provisioned). state is "created", "migrated", or
+    "current".
+
+    An existing database used to be skipped entirely, so a migration shipped
+    after a vault was created never reached it: the vault kept working until a
+    query touched the new table and failed with `no such table` on a live
+    system. Forward-only migration is what the runner is built for — each step
+    is transactional and bumps user_version atomically — so applying it here is
+    the safe, idempotent operation, and skipping it protected nothing.
+    """
+    if os.path.isfile(path):
+        conn = connection.open_existing(kind, path, ks)
+        before = migrations.user_version(conn)
+        after = migrations.migrate(conn, kind)
+        conn.close()
+        return ("migrated" if after != before else "current"), None
+
+    # Reuse an existing key rather than rotating: the reverse of the stranded
+    # case is safe, and rotating would discard a key the user may still need.
+    key_name = connection.DB_KEY_NAMES[kind]
+    minted = None
+    if _has_key(ks, key_name):
+        conn = connection.open_existing(kind, path, ks)
+    else:
+        conn = connection.provision_db(kind, path, ks)
+        minted = key_name
+    migrations.migrate(conn, kind)
+    conn.close()
+    return "created", minted
+
+
 def init_vault(paths, ks, *, reveal: bool = False) -> dict:
     """Create the runtime layout, both databases, and every key. Idempotent.
 
@@ -62,26 +96,19 @@ def init_vault(paths, ks, *, reveal: bool = False) -> dict:
     for directory in paths.all_dirs():
         fsperms.ensure_dir(directory)
 
-    created, already = [], []
+    created, already, migrated = [], [], []
     # Every key minted here, including the two provision_db mints internally. The
     # report listed only the service keys, so an operator saw two where there were
     # four — and the omitted pair is the one whose loss is unrecoverable.
     provisioned = []
+    buckets = {"created": created, "migrated": migrated, "current": already}
     for kind, path in (("vault", paths.vault_db), ("control", paths.control_db)):
-        key_name = connection.DB_KEY_NAMES[kind]
-        if os.path.isfile(path):
-            already.append(kind)
-            continue
-        # Reuse an existing key rather than rotating: the reverse of the stranded
-        # case is safe, and rotating would discard a key the user may still need.
-        if _has_key(ks, key_name):
-            conn = connection.open_existing(kind, path, ks)
-        else:
-            conn = connection.provision_db(kind, path, ks)
+        state, key_name = _ensure_database(kind, path, ks)
+        if key_name:
             provisioned.append(key_name)
-        migrations.migrate(conn, kind)
-        conn.close()
-        created.append(kind)
+        buckets[state].append(kind)
+        if state == "migrated":  # a migrated database was also already present
+            already.append(kind)
 
     for name in _SERVICE_KEYS:
         if not _has_key(ks, name):
@@ -97,6 +124,7 @@ def init_vault(paths, ks, *, reveal: bool = False) -> dict:
         "home": paths.home,
         "created": created,
         "already_present": already,
+        "migrated": migrated,
         "keys_provisioned": provisioned,
         "endpoint": "http://127.0.0.1:8765/mcp",
     }

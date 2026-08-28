@@ -19,6 +19,7 @@ _OPT_FLAGS = [
     "--timezone",
     "--date-format",
     "--self-label",
+    "--code",
     "--subject",
     "--type",
 ]

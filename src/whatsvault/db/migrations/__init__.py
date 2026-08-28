@@ -21,6 +21,7 @@ MIGRATIONS: dict[str, list[tuple[int, str]]] = {
         (1, "control/0001_initial.sql"),
         (2, "control/0002_device_agreement.sql"),
         (3, "control/0003_phase5.sql"),
+        (4, "control/0004_oauth.sql"),
     ],
 }
 

@@ -23,6 +23,41 @@ forged `Host` header is rejected with `421`.
 To reach the server from a hosted assistant, use an outbound tunnel; do not bind
 it publicly. See **ChatGPT** below.
 
+## Public deployment (ChatGPT)
+
+Setting `WHATSVAULT_PUBLIC_URL` to the https origin the server is published at
+mounts an OAuth 2.1 authorization server and pins the transport's Host check to
+that hostname. Unset — the default, and how the local connectors talk to this
+vault — none of it exists and a static bearer token is the only mechanism.
+
+| Endpoint | Purpose |
+|---|---|
+| `/.well-known/oauth-protected-resource` | RFC 9728 metadata; the `401` on `/mcp` points here |
+| `/.well-known/oauth-authorization-server` | RFC 8414 metadata |
+| `POST /oauth/register` | RFC 7591 dynamic client registration |
+| `GET /oauth/authorize` | consent page |
+| `GET /oauth/poll` | the page waits here for approval |
+| `POST /oauth/token` | code exchange and refresh |
+
+**The consent page never asks for a secret.** It shows a code and waits; the
+operator grants it from a terminal on the machine holding the vault:
+
+```bash
+whatsvault oauth-pending                 # what is waiting
+whatsvault oauth-approve --code ABCDE-FGHIJ
+whatsvault oauth-revoke                  # kill every token; the off switch
+```
+
+A public form accepting a password would be a phishing and brute-force target,
+and approval in this project belongs on a channel the requester cannot reach —
+the same reason sending needs the phone's Secure Enclave.
+
+What is enforced: PKCE `S256` only (`plain` is neither accepted nor advertised),
+exact-match https redirect URIs, single-use 60-second authorization codes bound
+to client and redirect URI, rotating refresh tokens, and SHA-256 hashing of every
+code and token at rest. The only scope issued is `whatsvault.read`, and the
+schema CHECKs it.
+
 ## ChatGPT
 
 ChatGPT's connector dialog offers OAuth, No Authentication, and Mixed — a static

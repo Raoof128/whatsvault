@@ -12,16 +12,21 @@ import functools
 import inspect
 import threading
 import time
+import urllib.parse
 
 from whatsvault.mcp import audit, reads
 from whatsvault.mcp import auth as auth_mod
-from whatsvault.mcp.http_auth import BearerAuthMiddleware
+from whatsvault.mcp.http_auth import BearerAuthMiddleware, PublicRouter
+from whatsvault.mcp.oauth_http import OAuthApp
 from whatsvault.search.query import DEFAULT_LIMIT, MAX_LIMIT, SearchQuery
 
 # 18: loopback bind + the port the launchd unit and the tunnel client both target.
 HOST = "127.0.0.1"
 PORT = 8765
 MCP_PATH = "/mcp"
+# Deployment switch: the https origin this server is reachable at, when it is
+# published. Its presence is what mounts the OAuth authorization server.
+PUBLIC_URL_ENV = "WHATSVAULT_PUBLIC_URL"
 
 # INV-CONTENT (#54): two strengths, honestly separated.
 INV_CONTENT_HARD = (
@@ -210,15 +215,30 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
     }
 
 
-def transport_security_settings(port: int = PORT):
+def transport_security_settings(port: int = PORT, public_url: str | None = None):
     """DNS-rebinding protection. Binding loopback is not sufficient on its own —
-    a hostile page can still drive a browser at 127.0.0.1 unless Host is pinned."""
+    a hostile page can still drive a browser at 127.0.0.1 unless Host is pinned.
+
+    A published deployment adds the one hostname it is served at. The protection
+    stays ON and no wildcard is ever admitted: an OAuth token that authenticates
+    correctly still got `421 Invalid Host header` until the exact host was
+    listed, and the fix for that is to name the host, not to stop checking.
+    """
     from mcp.server.transport_security import TransportSecuritySettings
 
+    hosts = [f"127.0.0.1:{port}", "127.0.0.1", f"localhost:{port}", "localhost"]
+    origins = [f"http://127.0.0.1:{port}", f"http://localhost:{port}"]
+    if public_url:
+        base = str(public_url).rstrip("/")
+        hostname = urllib.parse.urlsplit(base).netloc
+        if not hostname:
+            raise ValueError(f"public_url has no host: {public_url!r}")
+        hosts.append(hostname)
+        origins.append(base)
     return TransportSecuritySettings(
         enable_dns_rebinding_protection=True,
-        allowed_hosts=[f"127.0.0.1:{port}", "127.0.0.1", f"localhost:{port}", "localhost"],
-        allowed_origins=[f"http://127.0.0.1:{port}", f"http://localhost:{port}"],
+        allowed_hosts=hosts,
+        allowed_origins=origins,
     )
 
 
@@ -262,16 +282,39 @@ def assert_usable_from_worker_threads(**conns) -> None:
             ) from box["error"]
 
 
-def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", port=PORT):
-    """The full ASGI app: token gate in front of the Streamable-HTTP transport."""
+def build_oauth_app(inner, control_conn, token, *, public_url=None):
+    """Wrap an already-built MCP application in the auth surface.
+
+    public_url=None is the loopback deployment: a static bearer token and no
+    authorization server at all, so a local vault gains no attack surface from a
+    feature it is not using. Passing a URL mounts the OAuth endpoints and lets
+    the gate additionally accept the access tokens they issue.
+    """
+    if not public_url:
+        return BearerAuthMiddleware(inner, token)
+    base = str(public_url).rstrip("/")
+    if not base.startswith("https://"):
+        # The whole flow moves bearer credentials over this origin.
+        raise ValueError(f"public_url must be https, got {public_url!r}")
+    guarded = BearerAuthMiddleware(
+        inner,
+        token,
+        control_conn=control_conn,
+        resource_metadata_url=f"{base}/.well-known/oauth-protected-resource",
+    )
+    return PublicRouter(OAuthApp(control_conn, base), guarded)
+
+
+def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", port=PORT, public_url=None):
+    """The full ASGI app: auth surface in front of the Streamable-HTTP transport."""
     assert_usable_from_worker_threads(vault=vault_conn, control=control_conn)
     mcp_server = build_mcp_server(vault_conn, control_conn, audit_key, name=name)
     inner = mcp_server.streamable_http_app(
         streamable_http_path=MCP_PATH,
-        transport_security=transport_security_settings(port),
+        transport_security=transport_security_settings(port, public_url),
         host=HOST,
     )
-    return BearerAuthMiddleware(inner, token)
+    return build_oauth_app(inner, control_conn, token, public_url=public_url)
 
 
 BLOCKED_ON = "keys_not_provisioned"
@@ -303,11 +346,12 @@ def preflight(ks) -> dict | None:
 def main():  # pragma: no cover - process entrypoint; see test_main_symbols_resolve
     """Serve the loopback MCP. Mirrors cli.main's production wiring exactly."""
     import json
+    import os
 
     import uvicorn
 
     from whatsvault.crypto.keystore import KeyringKeyStore
-    from whatsvault.ops import daemon
+    from whatsvault.ops import daemon, structlog
 
     vault_conn, control_conn, blocked = daemon.open_databases("mcp", check_same_thread=False)
     if blocked is not None:
@@ -320,7 +364,13 @@ def main():  # pragma: no cover - process entrypoint; see test_main_symbols_reso
         return 0
     token = ks.require(auth_mod.TOKEN_KEY_NAME, 32).hex()
     audit_key = ks.require(audit.AUDIT_KEY_NAME, 32)
-    app = build_app(vault_conn, control_conn, token, audit_key)
+    # Set only for a deployment behind a public URL. Absent -- the default, and
+    # how the local connectors talk to this vault -- no authorization server is
+    # mounted at all.
+    public_url = os.environ.get(PUBLIC_URL_ENV) or None
+    app = build_app(vault_conn, control_conn, token, audit_key, public_url=public_url)
+    if public_url:
+        print(json.dumps(structlog.event({"service": "mcp", "status": "public", "issuer": public_url})))
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
     return 0
 
