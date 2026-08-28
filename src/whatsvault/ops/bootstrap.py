@@ -63,6 +63,10 @@ def init_vault(paths, ks, *, reveal: bool = False) -> dict:
         fsperms.ensure_dir(directory)
 
     created, already = [], []
+    # Every key minted here, including the two provision_db mints internally. The
+    # report listed only the service keys, so an operator saw two where there were
+    # four — and the omitted pair is the one whose loss is unrecoverable.
+    provisioned = []
     for kind, path in (("vault", paths.vault_db), ("control", paths.control_db)):
         key_name = connection.DB_KEY_NAMES[kind]
         if os.path.isfile(path):
@@ -70,16 +74,15 @@ def init_vault(paths, ks, *, reveal: bool = False) -> dict:
             continue
         # Reuse an existing key rather than rotating: the reverse of the stranded
         # case is safe, and rotating would discard a key the user may still need.
-        conn = (
-            connection.open_existing(kind, path, ks)
-            if _has_key(ks, key_name)
-            else connection.provision_db(kind, path, ks)
-        )
+        if _has_key(ks, key_name):
+            conn = connection.open_existing(kind, path, ks)
+        else:
+            conn = connection.provision_db(kind, path, ks)
+            provisioned.append(key_name)
         migrations.migrate(conn, kind)
         conn.close()
         created.append(kind)
 
-    provisioned = []
     for name in _SERVICE_KEYS:
         if not _has_key(ks, name):
             ks.provision(name, 32)

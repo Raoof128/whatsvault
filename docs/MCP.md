@@ -80,8 +80,11 @@ identical to an idle one. Activity timing is content, and this was a real leak
 before it was closed.
 
 ### `list_templates`
-The locally synced template catalogue, or
-`{"status": "FEATURE_NOT_INITIALISED", "templates": []}` before Phase 5.
+The locally synced template catalogue: `{status, templates}`. On a vault created
+by `init` the table exists and is empty, so this returns
+`{"status": "OK", "templates": []}` until Phase 5 syncs a catalogue.
+`FEATURE_NOT_INITIALISED` is reserved for a control database predating the
+templates migration.
 
 ## The forbidden surface
 

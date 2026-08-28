@@ -164,3 +164,35 @@ def test_cli_init_reports_a_missing_keystore(tmp_path, monkeypatch):
     monkeypatch.setenv("WHATSVAULT_HOME", str(tmp_path / "home"))
     out = commands.cmd_init(commands.Ctx(None, None), {})
     assert out["ok"] is False and "keystore" in out["error"].lower()
+
+
+# ---- the report must account for every key init mints --------------------------
+def test_report_names_every_key_that_was_provisioned(env):
+    """keys_provisioned listed only the two MCP keys, because the database keys
+    are minted inside provision_db. An operator reading the report would believe
+    two keys existed when four did — and the two omitted ones are the pair whose
+    loss makes the vault permanently unreadable."""
+    p, ks = env
+    out = bootstrap.init_vault(p, ks)
+    assert set(out["keys_provisioned"]) == {
+        C.DB_KEY_NAMES["vault"],
+        C.DB_KEY_NAMES["control"],
+        auth.TOKEN_KEY_NAME,
+        audit.AUDIT_KEY_NAME,
+    }
+
+
+def test_a_second_run_reports_no_new_keys(env):
+    p, ks = env
+    bootstrap.init_vault(p, ks)
+    assert bootstrap.init_vault(p, ks)["keys_provisioned"] == []
+
+
+def test_a_partial_vault_reports_only_the_missing_key(env):
+    """The control database exists with its key; the vault does not. Only the
+    vault key is minted, and the report says exactly that."""
+    p, ks = env
+    bootstrap.init_vault(p, ks)
+    os.remove(p.vault_db)
+    ks._d.pop(C.DB_KEY_NAMES["vault"])
+    assert bootstrap.init_vault(p, ks)["keys_provisioned"] == [C.DB_KEY_NAMES["vault"]]

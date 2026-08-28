@@ -132,10 +132,36 @@ model cannot reverse it.
 
 ## Run as a background service
 
+The unit runs `~/.whatsvault/venv/bin/python`, deliberately: the service should
+not depend on where the source tree happens to live, and the system `python3` has
+neither `mcp` nor `sqlcipher3`. Create that venv first — nothing else does.
+
 ```bash
+python3 -m venv ~/.whatsvault/venv
+~/.whatsvault/venv/bin/pip install /path/to/WhatsVault
+
 sed "s|/Users/USERNAME|$HOME|g" apps/launchd/mcp.plist \
   > ~/Library/LaunchAgents/com.whatsvault.mcp.plist
 launchctl load ~/Library/LaunchAgents/com.whatsvault.mcp.plist
+```
+
+Check it: `launchctl list | grep whatsvault` prints `<pid> 0 com.whatsvault.mcp`.
+A `-` in the PID column means it exited; the log names the blocker.
+
+To connect an assistant, hand it the endpoint and the token:
+
+```bash
+claude mcp add --transport http --scope user whatsvault \
+  http://127.0.0.1:8765/mcp --header "Authorization: Bearer $TOKEN"
+```
+
+The token necessarily leaves the Keychain to reach the client — that is what a
+bearer token is for — and lands in that client's configuration. Nothing else
+should hold it. To revoke, delete the Keychain entry and re-provision:
+
+```bash
+security delete-generic-password -s whatsvault -a whatsvault.mcp.token.v1
+whatsvault mcp-provision --reveal
 ```
 
 Provision the keys **before** loading the unit. Without them the daemon reports
