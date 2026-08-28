@@ -95,6 +95,35 @@ layers that were each individually correct and individually tested.
 - OAuth discovery paths answer `404`, not the gate's `401` — clients parse an
   error body as protected-resource metadata.
 
+### Added — permanent deployment
+
+- `~/.whatsvault/setup-tunnel.sh`: turns a quick tunnel into a **named** one, so
+  the public hostname stops changing and a connector is added once rather than
+  after every restart. Creates (or reuses) the tunnel, writes a locked-down
+  ingress, routes DNS, sets `WHATSVAULT_PUBLIC_URL`, and installs a launchd agent
+  so both the tunnel and the vault return after a reboot.
+- The tunnel's edge ingress admits only `/mcp`, `/oauth/*` and `/.well-known/*`.
+  Everything else is refused by Cloudflare before it reaches the machine, so a
+  route added to the server later is not exposed by accident. Verified over the
+  internet: `/admin` and `/` return 404 from the edge.
+- That unit runs `KeepAlive=true`, deliberately unlike the four vault daemons,
+  which use `{SuccessfulExit: false}`. Those have a real "cannot do my job" state
+  to report once and stay stopped; a tunnel does not — a clean exit there just
+  means the connection dropped, and it should always come back.
+
+### Verification
+
+- **Phase-0 gate O2 is closed.** The record said the deciding evidence was blocked
+  on the transport existing, so the transport was built and the question answered
+  by observation: there is no static-credential field mapping to an
+  `Authorization` header, the unauthorised-client test it demanded has been run
+  against a live public origin, and the loopback-authorization-endpoint branch is
+  moot rather than resolved. The cost is recorded too — the no-public-surface
+  premise is narrowed, not abandoned. OpenAI's Secure MCP Tunnel is confirmed
+  real and *not* taken: it needs a Platform API key that a ChatGPT Plus
+  subscription does not supply. Gates 1–3 are untouched and the write path stays
+  inert.
+
 ### Documentation
 
 - `.env.example` no longer offers `WHATSVAULT_MCP_HOST` and `WHATSVAULT_MCP_PORT`.
@@ -108,6 +137,11 @@ layers that were each individually correct and individually tested.
   reaches a third party on every tool call, and the read-only surface bounds the
   model, not the host.
 - The README's red-team section covers both rounds rather than only the first.
+- The operator's actual public hostname is deliberately absent from this
+  repository. It briefly appeared in the Phase-0 record and was removed: the repo
+  is public, and naming the endpoint that serves a private message archive is a
+  free gift to a scanner. Certificate Transparency discloses the hostname anyway;
+  it need not also disclose what is behind it.
 
 ---
 

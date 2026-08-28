@@ -311,9 +311,11 @@ question answered by observation rather than more doc reading.
   this route, exactly as the downgrade to UNLIKELY predicted. Items 2 and 3 stand
   unchanged; Mixed and No Auth remain rejected.
 - The "loopback authorization endpoint" branch is **moot**, not resolved: the
-  chosen deployment publishes the AS on a named Cloudflare tunnel
-  (`vault.raoufabedini.dev`), so the browser-redirect leg reaches a public https
-  origin. Whether a `127.0.0.1` authorization endpoint would have satisfied
+  chosen deployment publishes the AS on a named Cloudflare tunnel, so the
+  browser-redirect leg reaches a public https origin. (The operator's actual
+  hostname is deliberately not recorded here: this repository is public, and
+  naming the endpoint that serves a private message archive is a free gift to a
+  scanner. It lives in the local, gitignored operator notes.) Whether a `127.0.0.1` authorization endpoint would have satisfied
   discovery remains untested and is no longer on the critical path.
 - The no-public-surface premise is **narrowed, not abandoned**, and this is the
   honest cost of closing O2. The bind is still `127.0.0.1`; reachability comes
