@@ -299,9 +299,52 @@ The earlier "publicly reachable AS → potential 2b STOP-SHIP" branch is NO LONG
 **Tunnel mechanics (unchanged, still accurate):** `tunnel-client` authenticates to OpenAI's control plane with a Platform API key (`CONTROL_PLANE_API_KEY="sk-..."`); tunnels are created in Platform settings, not by the CLI; "A tunnel can be associated with one or more Platform organizations or ChatGPT workspaces." NOTE: this implies a **Platform (API) account** alongside the ChatGPT Plus subscription — unverified whether Plus alone provides the required Platform org access for tunnel creation. Flag as an open account-config question.
 **Raw evidence reference (corrected):** https://developers.openai.com/api/docs/guides/developer-mode (DECIDING SOURCE for the connector path), https://help.openai.com/en/articles/12584461-developer-mode-and-mcp-apps-in-chatgpt , https://developers.openai.com/api/docs/guides/secure-mcp-tunnels , and https://developers.openai.com/plugins/build/auth (submission track only — NOT binding here). All in-session 2026-08-28.
 
+**RESOLUTION (2026-08-29). O2 is CLOSED by option (a): WhatsVault now operates its
+own OAuth 2.1 authorization server.** The record above said the deciding evidence
+was blocked on the transport existing — so the transport was built, and the
+question answered by observation rather than more doc reading.
+
+**What was observed, not inferred:**
+- The three-option dropdown recorded above is accurate, and item 1 of REMAINING
+  O2 WORK is answered **NO**: there is no static-credential field that maps to an
+  `Authorization` header. The existing Keychain bearer token does not traverse
+  this route, exactly as the downgrade to UNLIKELY predicted. Items 2 and 3 stand
+  unchanged; Mixed and No Auth remain rejected.
+- The "loopback authorization endpoint" branch is **moot**, not resolved: the
+  chosen deployment publishes the AS on a named Cloudflare tunnel
+  (`vault.raoufabedini.dev`), so the browser-redirect leg reaches a public https
+  origin. Whether a `127.0.0.1` authorization endpoint would have satisfied
+  discovery remains untested and is no longer on the critical path.
+- The no-public-surface premise is **narrowed, not abandoned**, and this is the
+  honest cost of closing O2. The bind is still `127.0.0.1`; reachability comes
+  from an outbound tunnel with an edge ingress admitting only `/mcp`, `/oauth/*`
+  and `/.well-known/*` (verified over the internet: `/admin` and `/` return 404
+  from Cloudflare). But message content now reaches a third party on every tool
+  call, and the authorization server is the boundary rather than network
+  position.
+- **The unauthorised-client test O2 required is now RUN**, against the live public
+  origin: anonymous `POST /mcp` → 401 carrying the RFC 9728 `resource_metadata`
+  pointer; a forged bearer → 401; a full authorization-code + PKCE exchange →
+  `initialize` 200. Polling before the operator approves never yields a code, and
+  the whole surface was red-teamed separately (nineteen findings, all fixed —
+  `tests/adversarial/test_oauth_grants.py`, `test_oauth_http.py`,
+  `test_redteam_public.py`).
+- Approval is deliberately **not** on the web page: the consent page has no form,
+  and the grant is made with `whatsvault oauth-approve` from a terminal on the
+  machine holding the vault. This preserves the project's shape — authority on a
+  channel the requester cannot reach.
+
+**Secure MCP Tunnel (the alternative) is confirmed real and NOT taken.**
+`tunnel-client` 0.0.13 was installed and `doctor` reached `RESULT ok` against the
+local server, so the route works. It was not used because it requires a
+`CONTROL_PLANE_API_KEY` from an OpenAI **Platform** account — resolving the
+account-config question flagged above: ChatGPT Plus alone does not supply it, and
+no Platform credential exists on this machine. Recorded as a live fallback that
+needs no public origin, should the public deployment be withdrawn.
+
 **Security consequence:** an unauthenticated route would let any party reaching the tunnel read message history.
-**Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
-**Reverification trigger:** OpenAI changes the auth model for the route.
+**Decision:** **PROCEED** — O2 closed 2026-08-29 via a self-hosted OAuth 2.1 AS with out-of-band approval. Read-only scope only; this decides nothing about the write path, which stays inert behind Gates 1-3.
+**Reverification trigger:** OpenAI changes the auth model for the route; or the public origin is withdrawn, which returns the choice to Secure MCP Tunnel.
 
 ### O3 — Does the route support the read tool surface (and later the write/prepare tools)?
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
@@ -341,6 +384,6 @@ CONSEQUENCE: on Enterprise/Edu the disclosure boundary is **wider than "excerpts
 | 1 — Coexistence | V1, V2, V3 | _(unfilled)_ | PROCEED / BLOCK |
 | 2 — Meta contract | **Blocking:** V4, V7, V12. **Compatibility/fallback:** V5, V6, V8, V9, V10, V11, V13 — V10 may still block free-form/template *production use* until understood (not the whole contract); V8 → manual-only fallback | _(unfilled)_ | PROCEED / BLOCK |
 | 3 — Cloudflare | V14.1, V14.3, V14.4, V14.5 (V14.2/V14.6 non-blocking) | _(unfilled)_ | PROCEED / BLOCK |
-| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / **plan = Plus, eligible**; write-tool availability on Plus has CONFLICTING primary sources (needs test); **O2 UNRESOLVED — live UI confirms exactly 3 modes (OAuth/No Auth/Mixed), no bearer-token option; 'static credentials' re-read as OAuth CLIENT credentials, so bearer-token fit DOWNGRADED to unlikely; No Auth and Mixed both rejected on security grounds. Deciding evidence is the discovery-gated Advanced OAuth panel → BLOCKED ON 2b TRANSPORT EXISTING, not on more doc reading**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
+| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | **O2 CLOSED 2026-08-29 — self-hosted OAuth 2.1 AS, verified live; see the RESOLUTION block in O2.** O1 route CONFIRMED / **plan = Plus, eligible**; write-tool availability on Plus has CONFLICTING primary sources (needs test); **O2 UNRESOLVED — live UI confirms exactly 3 modes (OAuth/No Auth/Mixed), no bearer-token option; 'static credentials' re-read as OAuth CLIENT credentials, so bearer-token fit DOWNGRADED to unlikely; No Auth and Mixed both rejected on security grounds. Deciding evidence is the discovery-gated Advanced OAuth panel → BLOCKED ON 2b TRANSPORT EXISTING, not on more doc reading**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
 
 **Activation is permitted only per-gate, only when that gate's blocking items are `YES` with evidence.** A NO on Gate 1 pauses the entire write path; the read/vault half (already shipped) is unaffected. Gate 4 is independent of Gates 1–3.
