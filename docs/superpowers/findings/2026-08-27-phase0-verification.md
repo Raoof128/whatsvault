@@ -17,7 +17,7 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 - `PROVISIONAL` — Meta webhook payload shapes for inbound/echo/history/status (V4/V5/V6/V7); current fixtures are marked `PROVISIONAL` in Phase 3.
 - `PROVISIONAL` — inbound timestamp unit is **seconds** (V4); the seconds→ms conversion depends on it.
 - `PROVISIONAL` — `biz_opaque_callback_data` is accepted on send and echoed into the status webhook (V8); until confirmed, status reconciliation is **manual-only** (conservative INDETERMINATE + POSSIBLE_MATCH, #59).
-- `PROVISIONAL` — pinned `META_GRAPH_VERSION` (V4/V12, ledger #44, DD1); no live send until a tested version is recorded here.
+- **CANDIDATE v21.0 (2026-08-28)** — `META_GRAPH_VERSION`: read-only Graph calls succeed on v21.0 (V4/V12, #44/DD1). Confirm it also serves the send + webhook path before pinning; no live send yet.
 - **DOC-CONFIRMED (WebFetch 2026-08-28)** — Cloudflare 128 KB cap / 100 retries / 24h free / paid ≤14-day / 4-day no-consumer DLQ (V14.1–V14.4). Still `PROVISIONAL`: THIS account's paid-retention configuration, R2 credentials + spill test (V14.5), and the realtime metric field name (V14.6).
 - `PROVISIONAL` — OpenAI/ChatGPT supported private-MCP connection route, its auth, and tool support (O1–O3, DD4).
 - **reported** — Meta Cloud-API content retention ~30 days (V13); Cloudflare paid retention ~14 days (V14.4) — pin both.
@@ -26,6 +26,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 
 ## GATE 1 — Coexistence (V1–V3)
 *Blocks the entire write path. A NO here pauses Phases 3/4/5 activation; the read/vault half proceeds regardless.*
+
+> **NOTE (2026-08-28):** the number provided for testing (+1 555-200-6424, `platform_type=CLOUD_API`, `verified_name="Test Number"`) is a standard Cloud API **test number, NOT a Coexistence number** — Gate 1 must be run against the personal WhatsApp Business App number and cannot be verified here. The test number is used only for the Gate 2 behavioural contract.
 
 ### V1 — Is the existing WhatsApp Business App number eligible for Coexistence onboarding?
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
@@ -66,8 +68,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** activates `MESSAGE_INBOUND` ingest; the Mac-side fan-out normaliser (#2) and `window_eligible` depend on the real nested shape; the seconds→ms conversion (§3.3) depends on the unit.
 **Required evidence:** captured (redacted) payload; confirm the nested `entry[].changes[].value.messages[]`/`statuses[]` structure (multi-event fan-out, #2); confirm the message `timestamp` is in **seconds**; the Graph API version used; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** PARTIAL (2026-08-28): Graph **v21.0** confirmed working for read calls → candidate `META_GRAPH_VERSION` pin (#44). The inbound webhook SHAPE + timestamp unit are STILL UNVERIFIED — capturing them requires a subscribed HTTPS webhook receiver (not yet stood up); the test number confirms `platform_type=CLOUD_API`.
+**Raw evidence reference:** live Graph API read calls (v21.0, 2026-08-28); webhook capture pending a receiver.
 **Security consequence:** a wrong shape/unit yields mis-parsed evidence and a wrong 24h-window computation (INV-SENDPOLICY).
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Meta bumps the webhook schema or the Graph API version.
@@ -126,8 +128,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** P2 policy (#11), template send (#17); the window is send-authoritative (INV-SENDPOLICY).
 **Required evidence:** a rejected free-form send outside the window with the exact error; a `message_templates` list response showing status; Graph version; date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** OBSERVED (2026-08-28, live Graph v21.0, `GET /{WABA}/message_templates`): the endpoint returns per-template `status`; APPROVED templates present (`hello_world` UTILITY/en_US, plus `jaspers_market_*`). Template-listing half = **YES**. PENDING (needs a send): does a free-form send fail outside the 24h window and require an APPROVED template (the enforcement half)?
+**Raw evidence reference:** live Graph API `GET /{WABA}/message_templates` (v21.0, 2026-08-28).
 **Security consequence:** if Meta does not enforce the window, the local `control.db` projection remains the sole gate (it already is) — verify it is never bypassed.
 **Classification:** compatibility/fallback (P1/P2 policy is deliberately local + send-authoritative).
 **Decision:** FALLBACK REQUIRED — revise the Meta adapter/policy compatibility before affected free-form/template sends; may block free-form/template **production use** until understood, but does NOT block the Meta contract or invalidate approval cryptography _(unfilled)_
@@ -148,8 +150,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** the `whatsvault-meta` daemon must hold ONLY the messaging scope (#43, topology invariant: one process holds the token, no management authority).
 **Required evidence:** the token/scope configuration screen showing the split; the exact `META_GRAPH_VERSION` in use (pin it here for DD1/#44); date.
-**Observed result:** _(unfilled)_
-**Raw evidence reference:** _(unfilled)_
+**Observed result:** OBSERVED (2026-08-28, live Graph v21.0, `GET /me/permissions`): `whatsapp_business_messaging` and `whatsapp_business_management` are **distinct, independently-granted permissions** → separable in principle (separability = **YES**). CAVEAT: the token tested holds BOTH (a dev/over-granted token). Full confirmation requires minting a **System User token scoped to `whatsapp_business_messaging` only** for `whatsvault-meta` and proving it can send without the management scope.
+**Raw evidence reference:** live Graph API `GET /me/permissions` (v21.0, 2026-08-28); findings only — token not stored.
 **Security consequence:** if inseparable, the daemon would hold management authority — a least-privilege violation.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Meta changes the scope/permission model or deprecates the Graph version.
