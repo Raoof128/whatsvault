@@ -7,7 +7,7 @@
 
 **What this is:** the complete, phased build of WhatsVault — a single-user, private, hardware-approval-gated WhatsApp vault + MCP. It merges nine phase plans (0, 1a, 1b, 1c, 2, 3, 4, 5, 6). Phase 1a is **shipped**; every other phase is executed only via its own just-in-time plan (see the Execution rule above).
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` — the design of record. Every phase argues from it.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` — the design of record. Every phase argues from it.
 
 **Tech stack:** Python ≥3.11 (vault, ingest, approval, MCP, scheduler) + TypeScript/Wrangler (edge Worker) + Swift/iOS (approval app). SQLCipher (source build vs `brew install sqlcipher`), `cryptography`, `keyring`, `python-ulid`, `mcp`, `apscheduler`, `pytest`. Dependencies locked in `requirements-lock.txt`.
 
@@ -482,15 +482,15 @@ These are genuinely unresolved decisions, **not** defects with known fixes. They
 
 # Phase 0 — Coexistence & Cloud API Verification Plan
 
-> **Execution artefact:** the fillable findings scaffold is `docs/superpowers/findings/2026-08-27-phase0-verification.md` — four gates (Coexistence / Meta contract / Cloudflare / OpenAI-2b), a PROVISIONAL assumptions registry, strict `UNKNOWN != YES` exit rule, and V8 reclassified (blocks deterministic reconciliation UX, not approval security). Run it against the real accounts and record YES/NO/UNKNOWN/BLOCKED with evidence.
+> **Execution artefact:** the fillable findings scaffold is `docs/internal/findings/2026-08-27-phase0-verification.md` — four gates (Coexistence / Meta contract / Cloudflare / OpenAI-2b), a PROVISIONAL assumptions registry, strict `UNKNOWN != YES` exit rule, and V8 reclassified (blocks deterministic reconciliation UX, not approval security). Run it against the real accounts and record YES/NO/UNKNOWN/BLOCKED with evidence.
 
 > **This is a verification plan, not a TDD implementation plan.** Its deliverable is a **findings document**, not code. It gates *production activation* of Phases 3–5; it does **not** gate development of them (their local cores are fixture-testable without it). Do not write or run production code here. Do not press onboarding buttons until the eligibility checks below pass.
 
 **Goal:** Establish, with receipts, whether and how this specific WhatsApp number can run under Meta Coexistence + direct Cloud API, and confirm the provider behaviours the write path depends on — before any component that talks to Meta is activated.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` (§0.1 C3, §9 Phase 0, §6.6 O2, INV-PROVIDER).
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` (§0.1 C3, §9 Phase 0, §6.6 O2, INV-PROVIDER).
 
-**Output artifact:** `docs/superpowers/findings/2026-XX-XX-phase0-coexistence.md` — each question answered YES/NO/UNKNOWN with the evidence (screenshot, API response, doc link with the exact quote). No prose-only answers.
+**Output artifact:** `docs/internal/findings/2026-XX-XX-phase0-coexistence.md` — each question answered YES/NO/UNKNOWN with the evidence (screenshot, API response, doc link with the exact quote). No prose-only answers.
 
 ## Ground rules
 
@@ -524,7 +524,7 @@ Phase 0 is complete when every V-item has a YES/NO/UNKNOWN finding with evidence
 
 # Phase 1a — Vault Core  ✅ SHIPPED
 
-> **Status: complete. 67 tests green, `pip check` clean, 14 commits.** Full task-by-task TDD detail lives in `docs/superpowers/plans/2026-08-27-whatsvault-phase1a-vault-core.md` (rev 2) and the executed code under `src/whatsvault/`. Summarised here so the master plan is complete; do not re-execute.
+> **Status: complete. 67 tests green, `pip check` clean, 14 commits.** Full task-by-task TDD detail lives in `docs/internal/plans/2026-08-27-whatsvault-phase1a-vault-core.md` (rev 2) and the executed code under `src/whatsvault/`. Summarised here so the master plan is complete; do not re-execute.
 
 **Delivered** (each a committed, tested deliverable):
 
@@ -558,7 +558,7 @@ Phase 0 is complete when every V-item has a YES/NO/UNKNOWN finding with evidence
 
 **Tech Stack:** Python ≥3.11, stdlib `zipfile`/`re`/`zoneinfo`, existing `whatsvault.{ids,timemodel,db}`. Builds on Phase 1a.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
 
 ## Global Constraints (verbatim / distilled from spec §8)
 
@@ -830,7 +830,7 @@ def test_header_match_extracts_sender_and_body():
 
 **Tech Stack:** Python ≥3.11, SQLCipher FTS5 (verified in Phase 1a capability gate), existing `whatsvault.db`. Builds on Phase 1a (+1b optional).
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §4.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §4.
 
 ## Global Constraints (spec §4)
 
@@ -965,7 +965,7 @@ def test_query_uses_same_pipeline():
 
 **Tech Stack:** Python ≥3.11, MCP SDK (FastMCP or the reference `mcp` package — pin in `requirements.in`), existing `whatsvault.{search,db,ids}`. Builds on 1a+1c.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §5.1, §5.3, §5.4, §5.5, §5.8.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §5.1, §5.3, §5.4, §5.5, §5.8.
 
 ## Global Constraints (spec §5)
 
@@ -1532,7 +1532,7 @@ These attack the *assembled* seams the per-phase gates can't see. Each reference
 
 ## Deliverables
 
-- [ ] **Attack report** → `docs/superpowers/findings/2026-XX-XX-phase6-gauntlet.md`: one entry per A–F item with attack/method/result/evidence (recomputable commands + output). Both outcomes sealed.
+- [ ] **Attack report** → `docs/internal/findings/2026-XX-XX-phase6-gauntlet.md`: one entry per A–F item with attack/method/result/evidence (recomputable commands + output). Both outcomes sealed.
 - [ ] **Regression tests** for any real hole found, added under `tests/adversarial/` (fix the mechanism, never loosen a check).
 - [ ] **Docs-accuracy pass** — verify every claim in the design spec against the shipped code; fix drift (the earlier gauntlets showed this catches real bugs, e.g. `cipher_secure_delete`, window authority).
 - [ ] **Re-scored scorecard** (spec §11 axes): re-run the 0–10 scoring at closeout; scores may go **down** — explain why. Confirm each named-artifact "what raises it" is either built or an explicit IOU (O6 phone-countersigned audit, O7 OS-user isolation).

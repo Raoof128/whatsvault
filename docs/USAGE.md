@@ -81,7 +81,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:8765/mcp \
 (Settings ▸ Apps ▸ Advanced), then use OpenAI's Secure MCP Tunnel to expose the
 loopback endpoint without publishing it. Developer mode is available on Pro, Plus,
 Business, and Enterprise/Edu, though write-tool availability differs by plan — see
-the [Phase-0 record](superpowers/findings/2026-08-27-phase0-verification.md) for
+the [Phase-0 record](internal/findings/2026-08-27-phase0-verification.md) for
 the current verified position.
 
 Whichever you use: connecting an assistant intentionally discloses the excerpts it

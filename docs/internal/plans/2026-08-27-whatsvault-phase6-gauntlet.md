@@ -56,7 +56,7 @@
 
 ## Deliverables
 
-- [ ] **Attack report** → `docs/superpowers/findings/2026-XX-XX-phase6-gauntlet.md`: one entry per A–F item with attack/method/result/evidence (recomputable commands + output). Both outcomes sealed.
+- [ ] **Attack report** → `docs/internal/findings/2026-XX-XX-phase6-gauntlet.md`: one entry per A–F item with attack/method/result/evidence (recomputable commands + output). Both outcomes sealed.
 - [ ] **Regression tests** for any real hole found, added under `tests/adversarial/` (fix the mechanism, never loosen a check).
 - [ ] **Docs-accuracy pass** — verify every claim in the design spec against the shipped code; fix drift (the earlier gauntlets showed this catches real bugs, e.g. `cipher_secure_delete`, window authority).
 - [ ] **Re-scored scorecard** (spec §11 axes): re-run the 0–10 scoring at closeout; scores may go **down** — explain why. Confirm each named-artifact "what raises it" is either built or an explicit IOU (O6 phone-countersigned audit, O7 OS-user isolation).

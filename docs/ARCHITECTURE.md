@@ -2,7 +2,7 @@
 
 This document explains how WhatsVault is put together and, more importantly, why
 each boundary sits where it does. The authoritative source is the
-[design specification](superpowers/specs/2026-08-27-whatsvault-design.md); this is
+[design specification](internal/specs/2026-08-27-whatsvault-design.md); this is
 the orientation guide.
 
 ## The problem being solved
@@ -170,7 +170,7 @@ message content. A log line cannot leak a body even by mistake.
 
 The write path is implemented and tested locally but inert, because it depends on
 external facts that have not been verified. Those are tracked in the
-[Phase-0 verification record](superpowers/findings/2026-08-27-phase0-verification.md),
+[Phase-0 verification record](internal/findings/2026-08-27-phase0-verification.md),
 where each assumption carries the primary-source quote that supports it and each
 open gate is named.
 

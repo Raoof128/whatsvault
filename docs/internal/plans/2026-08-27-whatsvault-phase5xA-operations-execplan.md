@@ -54,7 +54,7 @@
 - [ ] Failing test: each shipped plist validates (has KeepAlive for crash-restart, RunAtLoad, log paths, no inline secret); a crafted plist with an inline `META_TOKEN` is flagged. → commit `feat(5xA): launchd service definitions + plist validator (#57)`.
 
 ### Task 7: Full-suite gate + CHANGELOG + 5x-B deferred-decision note
-**Files:** `docs/superpowers/findings/2026-08-27-5xB-backup-dr-deferred.md`; CHANGELOG.
+**Files:** `docs/internal/findings/2026-08-27-5xB-backup-dr-deferred.md`; CHANGELOG.
 - [ ] Record the frozen DD3 fork (recoverable vs permanent-loss) as an explicit open decision; `.venv/bin/pytest -q` (exit checked, not piped) + `pip check` green; commit `test: close out Phase 5x-A operations; 5x-B backup/DR remains a frozen deferred decision (#58)`.
 
 ## Self-review (consistency + ambiguity gate — required before execution)

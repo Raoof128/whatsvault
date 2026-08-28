@@ -6,7 +6,7 @@
 
 **Goal:** Import WhatsApp TXT/ZIP chat exports into `vault.db` as evidence, refusing to guess anything the file cannot justify (dates, timezone, **self/direction**, message boundaries), with batch-scoped undo and forensic reparse — never touching `control.db` or a messaging window.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
 
 ## Bound to actual Phase 1a state (verified this session)
 

@@ -4,9 +4,9 @@
 
 **Goal:** Establish, with receipts, whether and how this specific WhatsApp number can run under Meta Coexistence + direct Cloud API, and confirm the provider behaviours the write path depends on — before any component that talks to Meta is activated.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` (§0.1 C3, §9 Phase 0, §6.6 O2, INV-PROVIDER).
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` (§0.1 C3, §9 Phase 0, §6.6 O2, INV-PROVIDER).
 
-**Output artifact:** `docs/superpowers/findings/2026-XX-XX-phase0-coexistence.md` — each question answered YES/NO/UNKNOWN with the evidence (screenshot, API response, doc link with the exact quote). No prose-only answers.
+**Output artifact:** `docs/internal/findings/2026-XX-XX-phase0-coexistence.md` — each question answered YES/NO/UNKNOWN with the evidence (screenshot, API response, doc link with the exact quote). No prose-only answers.
 
 ## Ground rules
 

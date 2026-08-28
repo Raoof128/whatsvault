@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python ≥3.11, SQLCipher FTS5 (verified in Phase 1a capability gate), existing `whatsvault.db`. Builds on Phase 1a (+1b optional).
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §4.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §4.
 
 ## Global Constraints (spec §4)
 

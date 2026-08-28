@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python ≥3.11, MCP SDK (FastMCP or the reference `mcp` package — pin in `requirements.in`), existing `whatsvault.{search,db,ids}`. Builds on 1a+1c.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §5.1, §5.3, §5.4, §5.5, §5.8.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §5.1, §5.3, §5.4, §5.5, §5.8.
 
 ## Global Constraints (spec §5)
 

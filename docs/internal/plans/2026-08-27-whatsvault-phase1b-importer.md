@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python ≥3.11, stdlib `zipfile`/`re`/`zoneinfo`, existing `whatsvault.{ids,timemodel,db}`. Builds on Phase 1a.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` §8, §3.9.
 
 ## Global Constraints (verbatim / distilled from spec §8)
 

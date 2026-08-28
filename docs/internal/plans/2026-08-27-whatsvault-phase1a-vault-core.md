@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python ≥3.11, `sqlcipher3` (source build against SQLCipher via `brew install sqlcipher`), `cryptography` (AES-256-GCM), `keyring` (macOS Keychain), `python-ulid`, `pytest`. Isolated in a project virtualenv, dependencies locked to exact versions.
 
-**Spec:** `docs/superpowers/specs/2026-08-27-whatsvault-design.md` (implements §2.4, §3; prepares hooks for §4, §7, §8). The plan argues from the spec; executors read both.
+**Spec:** `docs/internal/specs/2026-08-27-whatsvault-design.md` (implements §2.4, §3; prepares hooks for §4, §7, §8). The plan argues from the spec; executors read both.
 
 ## Global Constraints
 

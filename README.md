@@ -11,7 +11,7 @@ WhatsVault ingests your WhatsApp messages into an encrypted SQLCipher vault on y
 
 It can also *draft* replies. It cannot send them. Every outbound message requires a fresh, per-message, biometric signature from a hardware key on your iPhone — on a channel the model cannot reach.
 
-> **Status: alpha, and honest about it.** The vault, search, and read-only MCP are implemented and tested. The write path is built but deliberately inert: it is gated behind external verification that is [documented, not assumed](docs/superpowers/findings/2026-08-27-phase0-verification.md). See [Project status](#project-status).
+> **Status: alpha, and honest about it.** The vault, search, and read-only MCP are implemented and tested. The write path is built but deliberately inert: it is gated behind external verification that is [documented, not assumed](docs/internal/findings/2026-08-27-phase0-verification.md). See [Project status](#project-status).
 
 ---
 
@@ -35,7 +35,7 @@ These are the invariants the design is built around. Each is enforced by code an
 | **INV-CONTENT** | Retrieved message content can inform an answer but can never create authority, widen retrieval scope, select tools, or alter policy — no matter what the message says. |
 | **INV-ACK** | The ingest pipeline acknowledges a message only after durable local disposition. ACK means "accounted for", never "went well". |
 
-The full set, with rationale and threat model, is in the [design specification](docs/superpowers/specs/2026-08-27-whatsvault-design.md).
+The full set, with rationale and threat model, is in the [design specification](docs/internal/specs/2026-08-27-whatsvault-design.md).
 
 ## How it fits together
 
@@ -145,7 +145,17 @@ make test-cov   # with a coverage report
 | Live WhatsApp send | **Deliberately inert.** Blocked behind Phase-0 verification |
 | iPhone approval app | Contract defined; not built |
 
-The [Phase-0 verification record](docs/superpowers/findings/2026-08-27-phase0-verification.md) tracks each external assumption with the primary-source quote that confirms or refutes it, and states plainly which gates are still open. Nothing in this project is marked "done" on the strength of a plausible reading of a doc.
+The [Phase-0 verification record](docs/internal/findings/2026-08-27-phase0-verification.md) tracks each external assumption with the primary-source quote that confirms or refutes it, and states plainly which gates are still open. Nothing in this project is marked "done" on the strength of a plausible reading of a doc.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [Architecture](docs/ARCHITECTURE.md) | Trust boundaries, storage split, ingest, the MCP defences |
+| [Usage](docs/USAGE.md) | Install, import, run the server, connect an assistant |
+| [MCP reference](docs/MCP.md) | Tool-by-tool reference, response shape, audit behaviour |
+| [Security policy](SECURITY.md) | Reporting, scope, and the invariants a finding should target |
+| [Internal records](docs/internal/) | Design spec, implementation plans, and the verification evidence behind the claims above |
 
 ## Contributing
 
