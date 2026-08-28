@@ -13,6 +13,19 @@ substitute for this check.
 from . import auth
 
 _UNAUTHORISED = b'{"error":"unauthorized"}'
+_NOT_FOUND = b'{"error":"not_found"}'
+
+# RFC 9728 / RFC 8414 discovery lives under this prefix. This server authenticates
+# with a static bearer token and is not an OAuth authorization server, so the
+# truthful answer is 404. Returning the gate's 401 instead was actively harmful:
+# clients parse the body as protected-resource metadata, and OpenAI's
+# tunnel-client reported "invalid metadata ... missing resource" and held
+# readiness degraded.
+#
+# This is not a hole in the default-deny gate. The middleware answers the prefix
+# ITSELF and never forwards it, so no request shape under it can reach the app --
+# including one that tries to climb back out with `..`.
+_METADATA_PREFIX = "/.well-known/"
 
 
 class BearerAuthMiddleware:
@@ -30,6 +43,10 @@ class BearerAuthMiddleware:
         if scope["type"] != "http":
             # No websocket surface is offered; fail closed rather than pass through.
             raise RuntimeError(f"unsupported ASGI scope {scope['type']!r}")
+        if str(scope.get("path", "")).startswith(_METADATA_PREFIX):
+            # Answered here, never proxied, and identical with or without a token:
+            # the absence of OAuth metadata is not a secret.
+            return await self._not_found(send)
         if not self._authorised(scope):
             return await self._reject(send)
         return await self._app(scope, receive, send)
@@ -59,3 +76,17 @@ class BearerAuthMiddleware:
             }
         )
         await send({"type": "http.response.body", "body": _UNAUTHORISED})
+
+    @staticmethod
+    async def _not_found(send) -> None:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 404,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(_NOT_FOUND)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": _NOT_FOUND})

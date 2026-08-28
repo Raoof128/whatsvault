@@ -125,11 +125,23 @@ def test_non_http_scope_is_refused(downstream):
     assert downstream.calls == []
 
 
-def test_every_path_is_protected_not_just_mcp(downstream):
-    """Default-deny: no unauthenticated path exists on this app."""
+def test_no_unauthenticated_path_reaches_the_app(downstream):
+    """Default-deny stated as the property that matters: whatever the status code,
+    an unauthenticated request must never be proxied.
+
+    This previously asserted 401 everywhere. `/.well-known/*` now answers 404 —
+    the server is not an OAuth authorization server and saying "unauthorized"
+    there made clients parse the error body as protected-resource metadata
+    (tests/test_mcp_wellknown.py). The 404 is produced by the middleware and
+    never forwarded, so the invariant below is unchanged; only the code differs.
+    """
     mw = BearerAuthMiddleware(downstream, TOKEN)
-    for path in ("/", "/mcp", "/.well-known/oauth-protected-resource", "/anything"):
+    for path in ("/", "/mcp", "/anything", "/mcp/../mcp"):
         scope = _http_scope([])
         scope["path"] = path
-        assert _status(_drive(mw, scope)) == 401
+        assert _status(_drive(mw, scope)) == 401, path
+    for path in ("/.well-known/oauth-protected-resource", "/.well-known/anything"):
+        scope = _http_scope([])
+        scope["path"] = path
+        assert _status(_drive(mw, scope)) == 404, path
     assert downstream.calls == []

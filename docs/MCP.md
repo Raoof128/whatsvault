@@ -20,8 +20,41 @@ Requests are rejected with `401` when the header is absent, malformed, carries t
 wrong scheme, or appears more than once (ambiguous credentials fail closed). A
 forged `Host` header is rejected with `421`.
 
-To reach the server from a hosted assistant, put a tunnel in front of it; do not
-bind it publicly.
+To reach the server from a hosted assistant, use an outbound tunnel; do not bind
+it publicly. See **ChatGPT** below.
+
+## ChatGPT
+
+ChatGPT's connector dialog offers OAuth, No Authentication, and Mixed — a static
+bearer token fits none of them, so this server cannot be added as a plain HTTPS
+connector without building an OAuth 2.1 authorization server in front of it.
+
+Use OpenAI's [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+instead. `tunnel-client` makes only outbound HTTPS connections to OpenAI's
+control plane and forwards JSON-RPC to `127.0.0.1:8765`, so the vault is never
+published and no inbound firewall rule is opened. In ChatGPT the connector is
+added with **Connection: Tunnel** rather than a URL, which sidesteps the auth
+dropdown entirely; the bearer token is carried by `mcp.extra_headers`.
+
+```bash
+brew install openai/tools/tunnel-client
+tunnel-client doctor --profile whatsvault
+tunnel-client run   --profile whatsvault
+```
+
+Set `discovery_extra_headers` as well as `extra_headers`: the client probes
+`/.well-known/*` before it will report ready.
+
+Understand what this changes. Locally, message content never leaves the machine.
+Through a hosted assistant it reaches OpenAI's infrastructure on every tool call.
+The read-only surface, the redaction rules and the `LOCAL_ONLY` fence all still
+apply — the model still cannot send, and still never sees a phone number — but
+the content of anything it *can* read is now handled by a third party. Fence the
+conversations that should never leave first:
+
+```bash
+whatsvault mcp-visibility --conversation-id cnv_… --visibility LOCAL_ONLY
+```
 
 ## Tools
 
