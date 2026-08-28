@@ -18,7 +18,7 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 - `PROVISIONAL` — inbound timestamp unit is **seconds** (V4); the seconds→ms conversion depends on it.
 - `PROVISIONAL` — `biz_opaque_callback_data` is accepted on send and echoed into the status webhook (V8); until confirmed, status reconciliation is **manual-only** (conservative INDETERMINATE + POSSIBLE_MATCH, #59).
 - `PROVISIONAL` — pinned `META_GRAPH_VERSION` (V4/V12, ledger #44, DD1); no live send until a tested version is recorded here.
-- `PROVISIONAL` — Cloudflare Queues 128 KB per-message cap, ~4-day no-consumer DLQ retention, 14-day paid main retention, realtime metric field names (V14.1–V14.6).
+- **DOC-CONFIRMED (WebFetch 2026-08-28)** — Cloudflare 128 KB cap / 100 retries / 24h free / paid ≤14-day / 4-day no-consumer DLQ (V14.1–V14.4). Still `PROVISIONAL`: THIS account's paid-retention configuration, R2 credentials + spill test (V14.5), and the realtime metric field name (V14.6).
 - `PROVISIONAL` — OpenAI/ChatGPT supported private-MCP connection route, its auth, and tool support (O1–O3, DD4).
 - **reported** — Meta Cloud-API content retention ~30 days (V13); Cloudflare paid retention ~14 days (V14.4) — pin both.
 
