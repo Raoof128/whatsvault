@@ -1,4 +1,5 @@
 """Provider Protocol. The real MetaCloudProvider is Phase-0-gated; FakeMeta drives tests."""
+
 from typing import Protocol
 
 

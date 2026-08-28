@@ -1,5 +1,6 @@
 """Queue client Protocol + FakeQueue for tests. The real CloudflarePullConsumer is
 Phase-0-gated (Task 6). A message not ACKed (and not DLQ'd) is redelivered."""
+
 from dataclasses import dataclass
 
 
@@ -35,7 +36,7 @@ class FakeQueue:
             if body is not None:
                 self._acked.append(body)
 
-    def nack(self, lease_ids):        # redeliver: back to pending
+    def nack(self, lease_ids):  # redeliver: back to pending
         for lid in lease_ids:
             body = self._leased.pop(lid, None)
             if body is not None:

@@ -1,6 +1,8 @@
 """Versioned AES-256-GCM sealing for attachment blobs at rest (INV-ATREST).
 Envelope: magic(4) || version(1) || key_id(4, big-endian) || nonce(12) || ct||tag."""
+
 import os
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 ATTACHMENT_KEY_NAME = "whatsvault.attachment.key.v1"

@@ -1,6 +1,7 @@
 """Filesystem layout (5x-A). WHATSVAULT_HOME (default ~/.whatsvault) holds the two
 SQLCipher databases, attachment blobs, runtime sockets, and logs. No secret material
 lives here in plaintext — keys are Keychain-only."""
+
 import os
 
 

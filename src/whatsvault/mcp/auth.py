@@ -1,6 +1,7 @@
 """Loopback MCP auth (ledger #19). 127.0.0.1 is not an auth boundary — any local
 process as the user could connect — so every request carries a bearer token held in
 the keyring and compared in constant time."""
+
 import hmac
 
 TOKEN_KEY_NAME = "whatsvault.mcp.token.v1"

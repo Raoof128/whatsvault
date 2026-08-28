@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
 from whatsvault.importers import whatsapp_export as W
@@ -52,7 +54,7 @@ def test_clean_import_writes_evidence(tmp_path):
         "FROM messages ORDER BY ts_lower_ms"
     ).fetchall()
     assert len(rows) == 2
-    for direction, origin, we, scid, fp, tzb in rows:
+    for _direction, origin, we, scid, fp, tzb in rows:
         assert origin == "manual_export" and we == 0 and scid is None and fp is not None
         assert tzb == "explicit_import_setting"
     assert {r[0] for r in rows} == {"in", "out"}  # Mona -> in, You -> out

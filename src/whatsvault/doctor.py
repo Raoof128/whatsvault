@@ -1,6 +1,7 @@
 """Vault integrity checks (spec §3.7 I5 + structural + SQLCipher integrity).
 A doctor reconstructs evidence truth and repairs drift; it never preserves a
 forged or future window value. Send-side invariants I2/I3/I4 are Phase 4."""
+
 from whatsvault import ids
 from whatsvault.search import normalise as _N
 
@@ -8,14 +9,15 @@ from whatsvault.search import normalise as _N
 def advance_window(control_conn, conversation_id: str, incoming_provider_ms: int) -> int:
     """Live ingest path: monotonic MAX(existing, incoming). Never used by doctor."""
     row = control_conn.execute(
-        "SELECT last_inbound_ms FROM conversation_windows WHERE conversation_id=?",
-        (conversation_id,)).fetchone()
+        "SELECT last_inbound_ms FROM conversation_windows WHERE conversation_id=?", (conversation_id,)
+    ).fetchone()
     existing = row[0] if row else 0
     new_val = max(existing, incoming_provider_ms)
     control_conn.execute(
         "INSERT INTO conversation_windows(conversation_id, last_inbound_ms) VALUES(?,?) "
         "ON CONFLICT(conversation_id) DO UPDATE SET last_inbound_ms=excluded.last_inbound_ms",
-        (conversation_id, new_val))
+        (conversation_id, new_val),
+    )
     control_conn.commit()
     return new_val
 
@@ -27,17 +29,19 @@ def rebuild_window_from_evidence(vault_conn, control_conn, conversation_id: str)
     (evidence_ms,) = vault_conn.execute(
         "SELECT COALESCE(MAX(ts_lower_ms), 0) FROM messages "
         "WHERE conversation_id=? AND direction='in' AND window_eligible=1",
-        (conversation_id,)).fetchone()
+        (conversation_id,),
+    ).fetchone()
     stored_row = control_conn.execute(
-        "SELECT last_inbound_ms FROM conversation_windows WHERE conversation_id=?",
-        (conversation_id,)).fetchone()
+        "SELECT last_inbound_ms FROM conversation_windows WHERE conversation_id=?", (conversation_id,)
+    ).fetchone()
     stored_ms = stored_row[0] if stored_row else 0
     drift = stored_ms != evidence_ms
     if drift:
         control_conn.execute(
             "INSERT INTO conversation_windows(conversation_id, last_inbound_ms) VALUES(?,?) "
             "ON CONFLICT(conversation_id) DO UPDATE SET last_inbound_ms=excluded.last_inbound_ms",
-            (conversation_id, evidence_ms))
+            (conversation_id, evidence_ms),
+        )
         control_conn.commit()
     return {"evidence_ms": evidence_ms, "stored_ms": stored_ms, "drift": drift}
 
@@ -51,19 +55,30 @@ def check_vault(vault_conn) -> list[dict]:
             ids.validate("msg", mid)
         except ids.IdError:
             bad += 1
-    findings.append({"check": "message_id_prefix", "ok": bad == 0,
-                     "detail": f"{bad} message id(s) fail prefix/ULID validation"})
+    findings.append(
+        {
+            "check": "message_id_prefix",
+            "ok": bad == 0,
+            "detail": f"{bad} message id(s) fail prefix/ULID validation",
+        }
+    )
 
     ic = vault_conn.execute("PRAGMA integrity_check").fetchone()[0]
     findings.append({"check": "integrity_check", "ok": ic == "ok", "detail": ic})
 
     fk = vault_conn.execute("PRAGMA foreign_key_check").fetchall()
-    findings.append({"check": "foreign_key_check", "ok": len(fk) == 0,
-                     "detail": f"{len(fk)} foreign-key violation(s)"})
+    findings.append(
+        {"check": "foreign_key_check", "ok": len(fk) == 0, "detail": f"{len(fk)} foreign-key violation(s)"}
+    )
 
     cic = vault_conn.execute("PRAGMA cipher_integrity_check").fetchall()
-    findings.append({"check": "cipher_integrity_check", "ok": len(cic) == 0,
-                     "detail": f"{len(cic)} encrypted-page HMAC failure(s)"})
+    findings.append(
+        {
+            "check": "cipher_integrity_check",
+            "ok": len(cic) == 0,
+            "detail": f"{len(cic)} encrypted-page HMAC failure(s)",
+        }
+    )
 
     return findings
 
@@ -74,26 +89,43 @@ def check_search(vault_conn) -> list[dict]:
         try:
             vault_conn.execute(f"INSERT INTO {fts}({fts}) VALUES('integrity-check')")
             findings.append({"check": f"{fts}_integrity", "ok": True, "detail": "ok"})
-        except Exception as exc:  # noqa: BLE001 - report, never mask
+        except Exception as exc:
             findings.append({"check": f"{fts}_integrity", "ok": False, "detail": str(exc)})
 
     orphans = vault_conn.execute(
         "SELECT COUNT(*) FROM search_documents sd LEFT JOIN messages m ON m.id=sd.message_id "
-        "WHERE m.id IS NULL").fetchone()[0]
-    findings.append({"check": "search_orphans", "ok": orphans == 0,
-                     "detail": f"{orphans} search_documents row(s) with no message"})
+        "WHERE m.id IS NULL"
+    ).fetchone()[0]
+    findings.append(
+        {
+            "check": "search_orphans",
+            "ok": orphans == 0,
+            "detail": f"{orphans} search_documents row(s) with no message",
+        }
+    )
 
     missing = vault_conn.execute(
         "SELECT COUNT(*) FROM messages m LEFT JOIN search_documents sd ON sd.message_id=m.id "
-        "WHERE m.text_original IS NOT NULL AND sd.message_id IS NULL").fetchone()[0]
-    findings.append({"check": "search_missing", "ok": missing == 0,
-                     "detail": f"{missing} message(s) with text not indexed"})
+        "WHERE m.text_original IS NOT NULL AND sd.message_id IS NULL"
+    ).fetchone()[0]
+    findings.append(
+        {
+            "check": "search_missing",
+            "ok": missing == 0,
+            "detail": f"{missing} message(s) with text not indexed",
+        }
+    )
 
     stale = vault_conn.execute(
-        "SELECT COUNT(*) FROM search_documents WHERE normaliser_version != ?",
-        (_N.NORMALISER_VERSION,)).fetchone()[0]
-    findings.append({"check": "search_normaliser_stale", "ok": stale == 0,
-                     "detail": f"{stale} row(s) at a stale normaliser_version"})
+        "SELECT COUNT(*) FROM search_documents WHERE normaliser_version != ?", (_N.NORMALISER_VERSION,)
+    ).fetchone()[0]
+    findings.append(
+        {
+            "check": "search_normaliser_stale",
+            "ok": stale == 0,
+            "detail": f"{stale} row(s) at a stale normaliser_version",
+        }
+    )
     return findings
 
 
@@ -104,8 +136,13 @@ def check_ingest(vault_conn) -> list[dict]:
     oldest = vault_conn.execute("SELECT MIN(first_seen_ms) FROM ingest_dlq").fetchone()[0]
     findings.append({"check": "dlq_oldest_first_seen_ms", "ok": oldest is None, "detail": str(oldest)})
     row = vault_conn.execute("SELECT circuit_state, reason FROM ingest_state WHERE id=1").fetchone()
-    findings.append({"check": "circuit_breaker", "ok": row[0] == "CLOSED",
-                     "detail": row[0] + (f": {row[1]}" if row[1] else "")})
+    findings.append(
+        {
+            "check": "circuit_breaker",
+            "ok": row[0] == "CLOSED",
+            "detail": row[0] + (f": {row[1]}" if row[1] else ""),
+        }
+    )
     return findings
 
 
@@ -120,32 +157,55 @@ def check_mcp(vault_conn, control_conn, ks=None) -> list[dict]:
     findings: list[dict] = []
 
     cols = [r[1] for r in vault_conn.execute("PRAGMA table_info(conversations)")]
-    findings.append({"check": "mcp_visibility_column", "ok": "mcp_visibility" in cols,
-                     "detail": "vault.conversations.mcp_visibility (LOCAL_ONLY fence)"})
+    findings.append(
+        {
+            "check": "mcp_visibility_column",
+            "ok": "mcp_visibility" in cols,
+            "detail": "vault.conversations.mcp_visibility (LOCAL_ONLY fence)",
+        }
+    )
 
     present = control_conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'").fetchone()
-    findings.append({"check": "audit_log_present", "ok": present is not None,
-                     "detail": "control.audit_log"})
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'"
+    ).fetchone()
+    findings.append({"check": "audit_log_present", "ok": present is not None, "detail": "control.audit_log"})
 
-    triggers = {r[0] for r in control_conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit_log'")}
+    triggers = {
+        r[0]
+        for r in control_conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit_log'"
+        )
+    }
     needed = {"trg_audit_no_update", "trg_audit_no_delete"}
-    findings.append({"check": "audit_log_append_only", "ok": needed <= triggers,
-                     "detail": f"missing={sorted(needed - triggers)}"})
+    findings.append(
+        {
+            "check": "audit_log_append_only",
+            "ok": needed <= triggers,
+            "detail": f"missing={sorted(needed - triggers)}",
+        }
+    )
 
     if "mcp_visibility" in cols:
         n = vault_conn.execute(
-            "SELECT COUNT(*) FROM conversations WHERE mcp_visibility='LOCAL_ONLY'").fetchone()[0]
+            "SELECT COUNT(*) FROM conversations WHERE mcp_visibility='LOCAL_ONLY'"
+        ).fetchone()[0]
         # Informational: a fenced conversation is a deliberate choice, never a fault.
-        findings.append({"check": "mcp_local_only_conversations", "ok": True,
-                         "detail": f"{n} conversation(s) fenced from MCP"})
+        findings.append(
+            {
+                "check": "mcp_local_only_conversations",
+                "ok": True,
+                "detail": f"{n} conversation(s) fenced from MCP",
+            }
+        )
 
     if ks is not None:
         from .mcp import audit as _audit
         from .mcp import auth as _auth
-        for check, name in (("mcp_token_provisioned", _auth.TOKEN_KEY_NAME),
-                            ("mcp_audit_key_provisioned", _audit.AUDIT_KEY_NAME)):
+
+        for check, name in (
+            ("mcp_token_provisioned", _auth.TOKEN_KEY_NAME),
+            ("mcp_audit_key_provisioned", _audit.AUDIT_KEY_NAME),
+        ):
             try:
                 ks.require(name, 32)
                 ok, detail = True, name

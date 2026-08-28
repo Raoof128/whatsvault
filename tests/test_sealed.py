@@ -1,8 +1,10 @@
 import hashlib
 import json
 import pathlib
+
 import pytest
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from whatsvault.crypto import sealed as S
 
 
@@ -32,10 +34,10 @@ def test_key_unavailable_distinct_from_auth_failed():
     priv, pub = _keypair()
     env = S.seal(pub, b"x", recipient_key_id=1, event_id_hash=b"\0" * 32)
     with pytest.raises(S.KeyUnavailable):
-        S.open_sealed(env, lambda k: None)          # transient
+        S.open_sealed(env, lambda k: None)  # transient
     other, _ = _keypair()
     with pytest.raises(S.AeadAuthFailed):
-        S.open_sealed(env, lambda k: other)         # wrong key present
+        S.open_sealed(env, lambda k: other)  # wrong key present
 
 
 def test_bad_magic_is_bad_envelope():

@@ -2,6 +2,7 @@
 until a page is read — so open_db performs an eager read to validate the key
 before returning (spec §2.4). Only real controls are applied: no
 `cipher_secure_delete` (that pragma does not exist and silently no-ops)."""
+
 import sqlcipher3
 
 from whatsvault.crypto.keystore import KeyStore

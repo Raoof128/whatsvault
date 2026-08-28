@@ -1,6 +1,7 @@
 """Recipient-key retirement safety (ledger #39). Retirement is time/state-based, not
 a scan of Cloudflare Queue contents: retire refuses while the local DLQ still
 references the key or the edge has not been confirmed drained beyond retention."""
+
 from .ingest import dlq
 
 

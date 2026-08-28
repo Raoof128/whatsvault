@@ -1,8 +1,10 @@
 import os
+
 import pytest
 import sqlcipher3
-from whatsvault.db import connection as C
+
 from whatsvault.crypto.keystore import MemoryKeyStore
+from whatsvault.db import connection as C
 
 
 def test_provision_write_then_open_existing(tmp_path):

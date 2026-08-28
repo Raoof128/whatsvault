@@ -1,4 +1,5 @@
 """Family-specific, domain-tagged semantic dedupe keys (spec §3.8)."""
+
 import hashlib
 
 _MSG_DOMAIN = "WHATSVAULT-DEDUPE-MESSAGE-V1"
@@ -19,7 +20,8 @@ def message_key(provider: str, phone_number_id: str, wamid: str) -> str:
     return _sha(_MSG_DOMAIN, provider, phone_number_id, wamid)
 
 
-def status_key(provider: str, phone_number_id: str, wamid: str,
-               status: str, provider_ts_ms: int, recipient_id) -> str:
+def status_key(
+    provider: str, phone_number_id: str, wamid: str, status: str, provider_ts_ms: int, recipient_id
+) -> str:
     rid = "\x00none" if recipient_id is None else recipient_id
     return _sha(_STATUS_DOMAIN, provider, phone_number_id, wamid, status, str(provider_ts_ms), rid)

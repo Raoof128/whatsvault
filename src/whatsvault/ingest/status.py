@@ -23,5 +23,9 @@ def reduce_status(events: list[dict]) -> dict:
             deleted_at = ts if deleted_at is None else min(deleted_at, ts)
         else:
             unknown.add(s)
-    return {"delivery_rank": rank, "failed_at_ms": failed_at,
-            "deleted_at_ms": deleted_at, "unknown_statuses": sorted(unknown)}
+    return {
+        "delivery_rank": rank,
+        "failed_at_ms": failed_at,
+        "deleted_at_ms": deleted_at,
+        "unknown_statuses": sorted(unknown),
+    }

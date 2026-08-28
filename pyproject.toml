@@ -131,17 +131,59 @@ select = [
     "PL",   # pylint subset
     "RUF",  # ruff-specific
 ]
+# Every entry below is a deliberate, reviewed exemption — not noise suppression.
 ignore = [
     "S101",    # assert: the test suite is assertion-driven by design
     "PLR0913", # many arguments: the crypto/ingest seams genuinely take many
+    "PLR0917", # ditto, positional form
     "PLR2004", # magic values in comparisons are clearer inline for protocol constants
     "RET504",  # a named result before return often documents the value
     "S603",    # subprocess without shell: call sites are literal, not user input
-    "SIM108",  # ternary is not always clearer than if/else here
+    "SIM108",  # a ternary is not always clearer than if/else here
+    # Daemon entry points import uvicorn/keyring/apscheduler lazily so that merely
+    # importing a module never pulls in a heavy or platform-bound dependency. This
+    # is load-bearing: the negative-surface tests import apps.mcp.server directly.
+    "PLC0415",
+    # `(value,) = cursor.fetchone()` is the idiom used to assert single-row shape.
+    "RUF059",
+    # Masking glyphs ("••••") and Persian search fixtures are intentional.
+    "RUF001", "RUF002", "RUF003",
+    # These names end in _KEY_NAME/_KEY and hold Keychain *identifiers*, never key
+    # material. The real guarantee is tests/test_no_secrets.py, which fails CI if a
+    # key literal is ever committed.
+    "S105",
+    # Complexity thresholds: the send state machine and the importer are genuinely
+    # branchy, and splitting them for a metric would obscure the flow they encode.
+    "PLR0911", "PLR0915",
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Naive datetimes are the domain model here: a WhatsApp export carries wall-clock
+# local time, and classify_local() interprets it against a zone precisely to detect
+# DST-ambiguous and skipped times. Attaching tzinfo would defeat the mechanism.
+"src/whatsvault/importers/parse.py" = ["DTZ001"]
+"tests/test_timemodel.py" = ["DTZ001"]
+# Predicate fragments are module literals and every caller value is a bound
+# parameter; interpolated identifiers are allowlisted at runtime in the module.
+"src/whatsvault/mcp/reads.py" = ["S608"]
+"src/whatsvault/search/query.py" = ["S608"]
+"src/whatsvault/approval/devices.py" = ["S608"]
+"src/whatsvault/approval/sender.py" = ["S608"]
+# INV-ACK: a failed search-index write must never block an ACK, so the exception is
+# swallowed deliberately. contextlib.suppress would read as incidental; it is not.
+"apps/ingest/consumer.py" = ["S110", "SIM105"]
+# A doctor check reports a fault as a finding; it must never raise.
+"src/whatsvault/doctor.py" = ["BLE001"]
 "tests/*" = [
+    "S310",  # urllib against a loopback test server
+    "S607",  # `git` resolved from PATH inside the secret-tracking gate
+    "S103",  # a fixture deliberately loosens permissions to prove the check fires
+    "S104",  # asserting "0.0.0.0" is ABSENT, not binding to it
+    "S112",  # a decode probe that skips non-base64 tokens by design
+    "B017",  # a couple of suites assert only that *some* failure occurs
+    "E501",          # long inline SQL and schema literals read better unwrapped
+    "S608",          # schema-probing SQL built from table names the test itself defines
+    "E402",          # a few suites configure sys.path before importing
     "S105", "S106",  # hard-coded test tokens are fixtures, never real credentials
     "S311",          # non-crypto RNG is fine for generating test data
     "BLE001",        # tests deliberately catch broadly when asserting failure modes

@@ -4,6 +4,7 @@ Each test here began as a confirmed exploit against the shipped surface. They
 encode the attacker's goal, not the implementation, so a regression re-opens the
 hole visibly.
 """
+
 import asyncio
 import base64
 import os
@@ -14,34 +15,41 @@ import pytest
 from apps.mcp import server
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
-from whatsvault.mcp import acl, present, reads
+from whatsvault.mcp import acl, reads
 from whatsvault.mcp.http_auth import BearerAuthMiddleware
 from whatsvault.search import index as IDX
 from whatsvault.search.query import SearchQuery
 
 SECRET_NUMBER = "61412345678"
 # Real wamid shape: the base64 payload carries the counterparty E.164 in the clear.
-REPLY_WAMID = "wamid." + base64.b64encode(
-    b"\x1c\x18\x0b" + SECRET_NUMBER.encode() + b"\x15\x02\x00\x11\x18\x129B3F7A8C").decode()
+REPLY_WAMID = (
+    "wamid."
+    + base64.b64encode(
+        b"\x1c\x18\x0b" + SECRET_NUMBER.encode() + b"\x15\x02\x00\x11\x18\x129B3F7A8C"
+    ).decode()
+)
 
 
 @pytest.fixture
 def db(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     v.execute("INSERT INTO accounts(id,phone_number_id) VALUES('acc','pn')")
     for cid in ("pub", "secret"):
-        v.execute("INSERT INTO conversations(id,account_id,type,subject) VALUES(?,'acc','dm',?)",
-                  (cid, cid))
+        v.execute("INSERT INTO conversations(id,account_id,type,subject) VALUES(?,'acc','dm',?)", (cid, cid))
     v.commit()
     return v, c
 
 
 def _msg(v, mid, conv, body, ts=1, reply_to=None):
-    v.execute("INSERT INTO messages(id,account_id,conversation_id,direction,ts_lower_ms,"
-              "ts_upper_ms_exclusive,ts_precision,type,text_original,origin,window_eligible,"
-              "reply_to_wamid) VALUES(?, 'acc',?, 'in',?,?,'min','text',?,'manual_export',0,?)",
-              (mid, conv, ts, ts + 1, body, reply_to))
+    v.execute(
+        "INSERT INTO messages(id,account_id,conversation_id,direction,ts_lower_ms,"
+        "ts_upper_ms_exclusive,ts_precision,type,text_original,origin,window_eligible,"
+        "reply_to_wamid) VALUES(?, 'acc',?, 'in',?,?,'min','text',?,'manual_export',0,?)",
+        (mid, conv, ts, ts + 1, body, reply_to),
+    )
     IDX.index_message(v, mid, body)
     v.commit()
 
@@ -51,8 +59,9 @@ def test_local_only_conversation_leaks_no_window_metadata(db):
     """acl.py calls LOCAL_ONLY 'a hard fence'. Activity timing is still content."""
     v, c = db
     acl.set_visibility(v, "secret", "LOCAL_ONLY")
-    c.execute("INSERT INTO conversation_windows(conversation_id,last_inbound_ms) "
-              "VALUES('secret',1700000000000)")
+    c.execute(
+        "INSERT INTO conversation_windows(conversation_id,last_inbound_ms) VALUES('secret',1700000000000)"
+    )
     c.commit()
     out = reads.get_conversation_window(c, v, "secret", 1700000001000)
     assert out["last_inbound_ms"] == 0, "leaked exact last-inbound timestamp of a private chat"
@@ -61,8 +70,7 @@ def test_local_only_conversation_leaks_no_window_metadata(db):
 
 def test_allowed_conversation_window_still_works(db):
     v, c = db
-    c.execute("INSERT INTO conversation_windows(conversation_id,last_inbound_ms) "
-              "VALUES('pub',1700000000000)")
+    c.execute("INSERT INTO conversation_windows(conversation_id,last_inbound_ms) VALUES('pub',1700000000000)")
     c.commit()
     out = reads.get_conversation_window(c, v, "pub", 1700000001000)
     assert out["open"] is True and out["last_inbound_ms"] == 1700000000000
@@ -106,8 +114,10 @@ def test_limit_cannot_be_escaped_downward(db, bad):
 def test_list_chats_limit_cannot_be_escaped_downward(db):
     v, _ = db
     for i in range(reads.MAX_LIMIT + 30):
-        v.execute("INSERT INTO conversations(id,account_id,type,subject) VALUES(?,'acc','dm',?)",
-                  (f"c{i:04d}", f"s{i}"))
+        v.execute(
+            "INSERT INTO conversations(id,account_id,type,subject) VALUES(?,'acc','dm',?)",
+            (f"c{i:04d}", f"s{i}"),
+        )
     v.commit()
     assert len(reads.list_chats(v, limit=-1)) <= reads.MAX_LIMIT
 
@@ -117,7 +127,7 @@ def test_failed_tool_call_is_audited_as_a_failure(db):
     """A probe that errors must not leave a clean trail (§5.8)."""
     v, c = db
     handlers = server.build_tool_handlers(v, c, os.urandom(32))
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):  # _clamp rejects a non-integer limit
         handlers["get_messages"](conversation_id="pub", limit="not-an-int")
     rows = c.execute("SELECT tool, outcome FROM audit_log").fetchall()
     assert rows, "a failed call must still be audited"
@@ -150,8 +160,7 @@ def _drive(mw, headers):
     async def send(m):
         sent.append(m)
 
-    asyncio.run(mw({"type": "http", "method": "POST", "path": "/mcp", "headers": headers},
-                   receive, send))
+    asyncio.run(mw({"type": "http", "method": "POST", "path": "/mcp", "headers": headers}, receive, send))
     return next(m["status"] for m in sent if m["type"] == "http.response.start")
 
 

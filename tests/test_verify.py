@@ -1,12 +1,14 @@
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
+
 from whatsvault.approval import verify as V
 
 
 def _kp():
     p = ec.generate_private_key(ec.SECP256R1())
-    sec1 = p.public_key().public_bytes(serialization.Encoding.X962,
-                                       serialization.PublicFormat.UncompressedPoint)
+    sec1 = p.public_key().public_bytes(
+        serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
+    )
     return p, sec1
 
 

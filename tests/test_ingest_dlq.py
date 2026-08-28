@@ -1,6 +1,8 @@
 import hashlib
 import os
+
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey
+
 from whatsvault.crypto import sealed as S
 from whatsvault.crypto.sealed import AeadAuthFailed, BadEnvelope, KeyUnavailable
 from whatsvault.db import connection as C
@@ -9,7 +11,9 @@ from whatsvault.ingest import dlq
 
 
 def _vault(tmp_path):
-    conn = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(conn, "vault"); return conn
+    conn = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(conn, "vault")
+    return conn
 
 
 def test_classify_uses_key_health_not_cohort():
@@ -27,16 +31,30 @@ def test_reaches_version_5(tmp_path):
 def test_quarantine_stores_metadata_no_payload(tmp_path):
     conn = _vault(tmp_path)
     pub = X25519PrivateKey.generate().public_key().public_bytes_raw()
-    env = S.seal(pub, b"SECRET-PAYLOAD", recipient_key_id=5,
-                 event_id_hash=hashlib.sha256(b"e").digest(), crypto_version=2)
-    dlq.quarantine(conn, env, failure_class="AEAD_AUTH_FAILED_ISOLATED", failure_code="poison",
-                   pipeline_stage="decrypt", detail="stage=decrypt", now_ms=100)
-    row = conn.execute("SELECT recipient_key_id, crypto_version, envelope_version, ciphertext_sha256, "
-                       "sanitised_detail, envelope FROM ingest_dlq").fetchone()
+    env = S.seal(
+        pub,
+        b"SECRET-PAYLOAD",
+        recipient_key_id=5,
+        event_id_hash=hashlib.sha256(b"e").digest(),
+        crypto_version=2,
+    )
+    dlq.quarantine(
+        conn,
+        env,
+        failure_class="AEAD_AUTH_FAILED_ISOLATED",
+        failure_code="poison",
+        pipeline_stage="decrypt",
+        detail="stage=decrypt",
+        now_ms=100,
+    )
+    row = conn.execute(
+        "SELECT recipient_key_id, crypto_version, envelope_version, ciphertext_sha256, "
+        "sanitised_detail, envelope FROM ingest_dlq"
+    ).fetchone()
     assert row["recipient_key_id"] == 5 and row["crypto_version"] == 2 and row["envelope_version"] == 1
     assert len(row["ciphertext_sha256"]) == 64
     assert "SECRET-PAYLOAD" not in row["sanitised_detail"] and len(row["sanitised_detail"]) <= 200
-    assert bytes(row["envelope"]) == env   # ciphertext retained for retry
+    assert bytes(row["envelope"]) == env  # ciphertext retained for retry
 
 
 def test_no_payload_sha256_column(tmp_path):

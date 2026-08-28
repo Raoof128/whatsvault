@@ -6,6 +6,7 @@ normalised query terms, and project each match span back to ORIGINAL character
 offsets via the per-codepoint origin map — so display_text is byte-identical to
 text_original and internal stripped chars (tatweel/combining/ZWNJ) fall inside
 the span."""
+
 from . import normalise as N
 
 

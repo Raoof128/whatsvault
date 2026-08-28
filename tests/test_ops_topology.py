@@ -6,7 +6,7 @@ def test_real_topology_satisfies_invariants():
 
 
 def test_two_token_holders_flagged():
-    bad = topology.PROCESSES + [{"name": "rogue", "holds_meta_token": True, "can_approve": False}]
+    bad = [*topology.PROCESSES, {"name": "rogue", "holds_meta_token": True, "can_approve": False}]
     f = {x["check"]: x["ok"] for x in topology.check_invariants(bad)}
     assert f["single_meta_token_holder"] is False
 

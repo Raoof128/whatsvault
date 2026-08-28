@@ -5,6 +5,7 @@ on the wire, so the Mac reconstructs the exact AAD from the envelope alone (this
 the fix for the original undecryptable format). AAD = the header prefix through
 event_id_hash. open_sealed raises three distinct errors so the failure taxonomy
 (#37) can tell transient (no key) from poison (bad tag / malformed)."""
+
 import hashlib
 import os
 import struct
@@ -18,7 +19,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 MAGIC = b"WVE1"
 ALG_X25519_HKDF_AESGCM = 1
 _INFO = b"WHATSVAULT-EDGE-SEAL-V1"
-_HDR_LEN = 4 + 1 + 1 + 1 + 4 + 32   # magic|env_ver|alg|cver|key_id|event_id_hash = 43
+_HDR_LEN = 4 + 1 + 1 + 1 + 4 + 32  # magic|env_ver|alg|cver|key_id|event_id_hash = 43
 _EPH_END = _HDR_LEN + 32
 _NONCE_END = _EPH_END + 12
 _CTLEN_END = _NONCE_END + 4
@@ -46,8 +47,16 @@ def _header_bytes(env_ver, alg, cver, key_id, event_id_hash) -> bytes:
     return MAGIC + bytes([env_ver, alg, cver]) + struct.pack(">I", key_id) + event_id_hash
 
 
-def seal(recipient_pub, plaintext, *, recipient_key_id, event_id_hash,
-         crypto_version=1, algorithm_id=ALG_X25519_HKDF_AESGCM, envelope_version=1) -> bytes:
+def seal(
+    recipient_pub,
+    plaintext,
+    *,
+    recipient_key_id,
+    event_id_hash,
+    crypto_version=1,
+    algorithm_id=ALG_X25519_HKDF_AESGCM,
+    envelope_version=1,
+) -> bytes:
     eph = X25519PrivateKey.generate()
     shared = eph.exchange(X25519PublicKey.from_public_bytes(recipient_pub))
     aeskey = HKDF(hashes.SHA256(), 32, None, _INFO).derive(shared)
@@ -64,23 +73,26 @@ def parse_header(envelope) -> dict:
     key_id = struct.unpack(">I", envelope[7:11])[0]
     event_id_hash = envelope[11:43]
     ct_len = struct.unpack(">I", envelope[_NONCE_END:_CTLEN_END])[0]
-    ct = envelope[_CTLEN_END:_CTLEN_END + ct_len]
+    ct = envelope[_CTLEN_END : _CTLEN_END + ct_len]
     if len(ct) != ct_len:
         raise BadEnvelope("truncated ciphertext")
     return {
-        "envelope_version": env_ver, "algorithm_id": alg, "crypto_version": cver,
-        "recipient_key_id": key_id, "event_id_hash": event_id_hash,
+        "envelope_version": env_ver,
+        "algorithm_id": alg,
+        "crypto_version": cver,
+        "recipient_key_id": key_id,
+        "event_id_hash": event_id_hash,
         "ciphertext_sha256": hashlib.sha256(ct).hexdigest(),
     }
 
 
 def open_sealed(envelope, key_lookup):
-    hdr = parse_header(envelope)          # raises BadEnvelope on malformed
+    hdr = parse_header(envelope)  # raises BadEnvelope on malformed
     aad = envelope[:_HDR_LEN]
     ephpub = envelope[_HDR_LEN:_EPH_END]
     nonce = envelope[_EPH_END:_NONCE_END]
     ct_len = struct.unpack(">I", envelope[_NONCE_END:_CTLEN_END])[0]
-    ct = envelope[_CTLEN_END:_CTLEN_END + ct_len]
+    ct = envelope[_CTLEN_END : _CTLEN_END + ct_len]
     priv = key_lookup(hdr["recipient_key_id"])
     if priv is None:
         raise KeyUnavailable(f"no private key for recipient_key_id {hdr['recipient_key_id']}")

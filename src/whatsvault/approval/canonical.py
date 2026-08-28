@@ -6,6 +6,7 @@ uint32be(len)||bytes in a FIXED order. Absent optionals are a zero-length slot
 DISTINCT slot from reply_to_wamid (#10) — a read-receipt/mark-read target is never
 overloaded onto the reply field. The iPhone reproduces these bytes exactly; the
 sender recomputes them from the draft and verifies the P-256 signature over them."""
+
 import hashlib
 
 VERSION = 1
@@ -13,11 +14,22 @@ DOMAIN = b"WHATSVAULT-DRAFT-DECISION-V1\n"
 _ATTACH_DOMAIN = b"WHATSVAULT-ATTACHMENTS-V1\n"
 
 _FIELDS = [
-    ("decision", "str"), ("draft_id", "str"), ("account_id", "str"), ("phone_number_id", "str"),
-    ("recipient_wa_id", "str"), ("body_sha256", "bytes"), ("kind", "str"), ("template_id", "str"),
-    ("template_params_sha256", "bytes"), ("reply_to_wamid", "str"), ("target_message_wamid", "str"),
-    ("attachments_digest", "bytes"), ("nonce", "bytes"), ("created_at_ms", "u64"),
-    ("expires_at_ms", "u64"), ("device_id", "str"),
+    ("decision", "str"),
+    ("draft_id", "str"),
+    ("account_id", "str"),
+    ("phone_number_id", "str"),
+    ("recipient_wa_id", "str"),
+    ("body_sha256", "bytes"),
+    ("kind", "str"),
+    ("template_id", "str"),
+    ("template_params_sha256", "bytes"),
+    ("reply_to_wamid", "str"),
+    ("target_message_wamid", "str"),
+    ("attachments_digest", "bytes"),
+    ("nonce", "bytes"),
+    ("created_at_ms", "u64"),
+    ("expires_at_ms", "u64"),
+    ("device_id", "str"),
 ]
 
 
@@ -28,7 +40,7 @@ def _field_bytes(typ, v) -> bytes:
         return v.encode("utf-8")
     if typ == "bytes":
         return bytes(v)
-    return int(v).to_bytes(8, "big")   # u64
+    return int(v).to_bytes(8, "big")  # u64
 
 
 def encode(fields: dict) -> bytes:

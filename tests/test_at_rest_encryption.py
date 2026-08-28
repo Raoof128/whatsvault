@@ -1,7 +1,8 @@
 import os
-from whatsvault.db import connection as C
+
 from whatsvault.crypto import atrest
 from whatsvault.crypto.keystore import MemoryKeyStore
+from whatsvault.db import connection as C
 
 SENTINEL = b"WV_PLAINTEXT_SENTINEL_9e1f7c"
 

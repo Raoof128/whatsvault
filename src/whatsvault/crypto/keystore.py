@@ -2,6 +2,7 @@
 once (provision) and thereafter only loaded (require); require never
 regenerates a missing key, because that would silently strand an existing
 encrypted database under a new, wrong key (INV-ATREST)."""
+
 import os
 from typing import Protocol
 
@@ -50,12 +51,14 @@ class KeyringKeyStore:
 
     def __init__(self) -> None:
         import keyring
+
         backend = type(keyring.get_keyring()).__module__
         if "macOS" not in backend and "keychain" not in backend.lower():
             raise KeyStoreError(f"expected macOS Keychain backend, got {backend!r}")
 
     def provision(self, name: str, nbytes: int) -> bytes:
         import keyring
+
         if keyring.get_password(self.SERVICE, name) is not None:
             raise KeyExists(name)
         key = os.urandom(nbytes)
@@ -64,6 +67,7 @@ class KeyringKeyStore:
 
     def require(self, name: str, nbytes: int) -> bytes:
         import keyring
+
         v = keyring.get_password(self.SERVICE, name)
         if v is None:
             raise KeyMissing(name)

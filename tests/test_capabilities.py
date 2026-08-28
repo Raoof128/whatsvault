@@ -1,6 +1,7 @@
-import sqlcipher3
 import pytest
-from whatsvault.capabilities import assert_sqlite_capabilities, CapabilityError
+import sqlcipher3
+
+from whatsvault.capabilities import CapabilityError, assert_sqlite_capabilities
 
 
 def _keyed_conn():
@@ -22,6 +23,7 @@ def test_build_has_sqlcipher_and_all_required_features():
 def test_missing_capability_raises(monkeypatch):
     def broken(_conn):
         raise sqlcipher3.OperationalError("no such module: fts5")
+
     monkeypatch.setattr("whatsvault.capabilities._probe_fts5", broken)
     with pytest.raises(CapabilityError):
         assert_sqlite_capabilities(_keyed_conn())

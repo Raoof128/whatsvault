@@ -4,6 +4,7 @@ Signatures are transported as raw r||s (64B) and reconstructed to DER; the paylo
 is verified directly under ECDSA(SHA256) (CryptoKit hashes internally). ECDSA is
 randomized, so signature bytes are NEVER a replay key — replay identity is
 device_id + nonce (enforced by the sender via approval_nonces UNIQUE)."""
+
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, utils

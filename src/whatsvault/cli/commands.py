@@ -2,23 +2,34 @@
 inspect, recover, administer. NONE creates approval authority: there is no approve/send/
 sign/mint verb, and no handler drives the sender write path or the capability grant store.
 Approval authority is the phone's Secure Enclave signature (Phase 4)."""
+
 from .. import doctor
 from ..approval import devices, reconcile
 from ..crypto import keystore
 from ..mcp import audit, auth
 from ..ops import health
 
-FORBIDDEN_VERBS = frozenset({
-    "approve", "send", "sign", "dispatch", "mint_capability", "create_capability",
-    "send_message", "get_credentials", "export_vault", "prepare",
-})
+FORBIDDEN_VERBS = frozenset(
+    {
+        "approve",
+        "send",
+        "sign",
+        "dispatch",
+        "mint_capability",
+        "create_capability",
+        "send_message",
+        "get_credentials",
+        "export_vault",
+        "prepare",
+    }
+)
 
 
 class Ctx:
     def __init__(self, vault_conn, control_conn, ks=None):
         self.vault = vault_conn
         self.control = control_conn
-        self.ks = ks                 # optional: only the provisioning/doctor paths use it
+        self.ks = ks  # optional: only the provisioning/doctor paths use it
 
 
 def _rows(cur):
@@ -26,9 +37,13 @@ def _rows(cur):
 
 
 def cmd_doctor(ctx, args):
-    return {"ok": True, "vault": doctor.check_vault(ctx.vault),
-            "search": doctor.check_search(ctx.vault), "ingest": doctor.check_ingest(ctx.vault),
-            "mcp": doctor.check_mcp(ctx.vault, ctx.control, ks=getattr(ctx, "ks", None))}
+    return {
+        "ok": True,
+        "vault": doctor.check_vault(ctx.vault),
+        "search": doctor.check_search(ctx.vault),
+        "ingest": doctor.check_ingest(ctx.vault),
+        "mcp": doctor.check_mcp(ctx.vault, ctx.control, ks=getattr(ctx, "ks", None)),
+    }
 
 
 def cmd_mcp_provision(ctx, args):
@@ -49,17 +64,23 @@ def cmd_mcp_provision(ctx, args):
         except keystore.KeyMissing:
             ctx.ks.provision(name, 32)
             provisioned.append(name)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - report ANY keystore fault, never crash
             # e.g. a present-but-wrong-length key. Report it; never overwrite —
             # provisioning over a corrupt key destroys evidence of the corruption.
             return {"ok": False, "error": f"{name}: {type(exc).__name__}: {exc}"}
-    out = {"ok": True, "provisioned": provisioned, "already_present": already,
-           "endpoint": "http://127.0.0.1:8765/mcp"}
+    out = {
+        "ok": True,
+        "provisioned": provisioned,
+        "already_present": already,
+        "endpoint": "http://127.0.0.1:8765/mcp",
+    }
     if args.get("reveal"):
         out["token"] = ctx.ks.require(auth.TOKEN_KEY_NAME, 32).hex()
     else:
-        out["note"] = ("token withheld; re-run with --reveal to print it "
-                       "(avoid doing so where stdout is captured to a log)")
+        out["note"] = (
+            "token withheld; re-run with --reveal to print it "
+            "(avoid doing so where stdout is captured to a log)"
+        )
     return out
 
 
@@ -68,8 +89,10 @@ def cmd_health(ctx, args):
 
 
 def cmd_devices_list(ctx, args):
-    return {"ok": True, "devices": _rows(ctx.control.execute(
-        "SELECT id, name, status, key_algorithm FROM approval_devices"))}
+    return {
+        "ok": True,
+        "devices": _rows(ctx.control.execute("SELECT id, name, status, key_algorithm FROM approval_devices")),
+    }
 
 
 def cmd_devices_revoke(ctx, args):
@@ -78,30 +101,51 @@ def cmd_devices_revoke(ctx, args):
 
 
 def cmd_dlq_list(ctx, args):
-    return {"ok": True, "dlq": _rows(ctx.vault.execute(
-        "SELECT id, failure_class, recipient_key_id, first_seen_ms FROM ingest_dlq"))}
+    return {
+        "ok": True,
+        "dlq": _rows(
+            ctx.vault.execute("SELECT id, failure_class, recipient_key_id, first_seen_ms FROM ingest_dlq")
+        ),
+    }
 
 
 def cmd_dlq_show(ctx, args):
     row = ctx.vault.execute(
         "SELECT id, failure_class, failure_code, pipeline_stage, recipient_key_id, crypto_version, "
-        "ciphertext_sha256, sanitised_detail FROM ingest_dlq WHERE id=?", (args["dlq_id"],)).fetchone()
+        "ciphertext_sha256, sanitised_detail FROM ingest_dlq WHERE id=?",
+        (args["dlq_id"],),
+    ).fetchone()
     return {"ok": row is not None, "row": dict(row) if row else None}
 
 
 def cmd_keys_list(ctx, args):
-    return {"ok": True, "keys_referenced_by_dlq": [r[0] for r in ctx.vault.execute(
-        "SELECT DISTINCT recipient_key_id FROM ingest_dlq WHERE recipient_key_id IS NOT NULL")]}
+    return {
+        "ok": True,
+        "keys_referenced_by_dlq": [
+            r[0]
+            for r in ctx.vault.execute(
+                "SELECT DISTINCT recipient_key_id FROM ingest_dlq WHERE recipient_key_id IS NOT NULL"
+            )
+        ],
+    }
 
 
 def cmd_templates_list(ctx, args):
-    return {"ok": True, "templates": _rows(ctx.control.execute(
-        "SELECT template_id, name, language, status FROM templates"))}
+    return {
+        "ok": True,
+        "templates": _rows(ctx.control.execute("SELECT template_id, name, language, status FROM templates")),
+    }
 
 
 def cmd_reconcile_list(ctx, args):
-    return {"ok": True, "candidates": _rows(ctx.control.execute(
-        "SELECT id, wamid, status, state FROM reconciliation_candidates WHERE state='POSSIBLE_MATCH'"))}
+    return {
+        "ok": True,
+        "candidates": _rows(
+            ctx.control.execute(
+                "SELECT id, wamid, status, state FROM reconciliation_candidates WHERE state='POSSIBLE_MATCH'"
+            )
+        ),
+    }
 
 
 def cmd_reconcile_resolve(ctx, args):
@@ -110,8 +154,14 @@ def cmd_reconcile_resolve(ctx, args):
 
 
 def cmd_scheduler_list(ctx, args):
-    return {"ok": True, "jobs": _rows(ctx.control.execute(
-        "SELECT job_id, conversation_id, generation_mode, enabled FROM scheduled_jobs"))}
+    return {
+        "ok": True,
+        "jobs": _rows(
+            ctx.control.execute(
+                "SELECT job_id, conversation_id, generation_mode, enabled FROM scheduled_jobs"
+            )
+        ),
+    }
 
 
 def _set_enabled(ctx, job_id, enabled):

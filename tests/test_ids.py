@@ -1,18 +1,35 @@
 import re
+
 import pytest
+
 from whatsvault import ids
 
 
 def test_registry_covers_every_schema_entity():
-    for p in ("acc", "cnt", "cnv", "src", "msg", "rev", "att", "evt",
-              "drf", "apv", "atm", "cap", "dev", "bat", "aud"):
+    for p in (
+        "acc",
+        "cnt",
+        "cnv",
+        "src",
+        "msg",
+        "rev",
+        "att",
+        "evt",
+        "drf",
+        "apv",
+        "atm",
+        "cap",
+        "dev",
+        "bat",
+        "aud",
+    ):
         assert p in ids.PREFIXES
 
 
 def test_new_id_has_prefix_and_26_char_ulid():
     v = ids.new_id("msg")
     assert v.startswith("msg_")
-    body = v[len("msg_"):]
+    body = v[len("msg_") :]
     assert re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{26}", body), body
 
 

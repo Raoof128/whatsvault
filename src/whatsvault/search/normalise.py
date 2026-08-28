@@ -4,17 +4,18 @@ One per-codepoint core drives all outputs so the index, the query, and the snipp
 span-mapping stay byte-for-byte consistent. Folds (Yeh/Kaf/hamza/digits) and strips
 (combining marks, tatweel, bidi controls) are lossy BY DESIGN — recall over
 precision. NEVER used for storage, dedup identity, or display (INV-SEARCH)."""
+
 import unicodedata
 
 NORMALISER_VERSION = 1
 
-_YEH = {"ي": "ی", "ى": "ی"}          # Arabic Yeh, Alef Maksura -> Persian Yeh
-_KAF = {"ك": "ک"}                     # Arabic Kaf -> Persian Kaf
+_YEH = {"ي": "ی", "ى": "ی"}  # Arabic Yeh, Alef Maksura -> Persian Yeh
+_KAF = {"ك": "ک"}  # Arabic Kaf -> Persian Kaf
 _HAMZA = {"أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا", "ؤ": "و", "ئ": "ی"}
 _DIGITS = {}
 for _i in range(10):
-    _DIGITS[chr(0x0660 + _i)] = str(_i)   # Arabic-Indic
-    _DIGITS[chr(0x06F0 + _i)] = str(_i)   # Extended (Persian)
+    _DIGITS[chr(0x0660 + _i)] = str(_i)  # Arabic-Indic
+    _DIGITS[chr(0x06F0 + _i)] = str(_i)  # Extended (Persian)
 _COMBINING = set(range(0x064B, 0x0660)) | {0x0670}
 _TATWEEL = 0x0640
 _BIDI = {0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069}

@@ -4,6 +4,7 @@ The header regex captures the date token, time, and sender family-independently;
 the family (DMY/MDY/YMD) only determines how the three numeric date components
 are interpreted. A day value > 12 disproves any family that would read it as a
 month — this is the load-bearing disambiguation rule (refuse, don't guess)."""
+
 import calendar
 import re
 

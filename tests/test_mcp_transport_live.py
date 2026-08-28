@@ -1,6 +1,7 @@
 """End-to-end transport gate (#18/#19). The unit tests cover the middleware in
 isolation; this boots the real ASGI app over a real socket and speaks MCP, so
 'the transport has never been executed' cannot silently become true again."""
+
 import json
 import os
 import socket
@@ -18,9 +19,16 @@ from whatsvault.db import migrations as M
 uvicorn = pytest.importorskip("uvicorn")
 
 TOKEN = "live-transport-token"
-INIT = {"jsonrpc": "2.0", "id": 1, "method": "initialize",
-        "params": {"protocolVersion": "2025-06-18", "capabilities": {},
-                   "clientInfo": {"name": "pytest", "version": "1"}}}
+INIT = {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "initialize",
+    "params": {
+        "protocolVersion": "2025-06-18",
+        "capabilities": {},
+        "clientInfo": {"name": "pytest", "version": "1"},
+    },
+}
 
 
 def _free_port():
@@ -32,8 +40,10 @@ def _free_port():
 @pytest.fixture(scope="module")
 def live(tmp_path_factory):
     d = tmp_path_factory.mktemp("live")
-    v = C.open_db(str(d / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(d / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(d / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(d / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     port = _free_port()
     app = server.build_app(v, c, TOKEN, os.urandom(32), port=port)
     srv = uvicorn.Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error"))
@@ -49,18 +59,21 @@ def live(tmp_path_factory):
 
 
 def _post(port, auth, host=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/mcp",
-                                 data=json.dumps(INIT).encode(), method="POST")
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/mcp", data=json.dumps(INIT).encode(), method="POST"
+    )
     req.add_header("Content-Type", "application/json")
     req.add_header("Accept", "application/json, text/event-stream")
     req.add_header("Host", host or f"127.0.0.1:{port}")
     if auth:
         req.add_header("Authorization", auth)
     try:
-        r = urllib.request.urlopen(req, timeout=15)
-        return r.status, r.read()
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.status, r.read()
     except urllib.error.HTTPError as e:
-        return e.code, e.read()
+        # HTTPError is itself a file-like response and leaks if left unclosed.
+        with e:
+            return e.code, e.read()
 
 
 def test_anonymous_request_is_refused(live):

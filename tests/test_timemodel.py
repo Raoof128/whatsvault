@@ -1,5 +1,7 @@
 import datetime as dt
+
 import pytest
+
 from whatsvault import timemodel as tm
 
 

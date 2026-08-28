@@ -8,6 +8,7 @@ Note on wamids (#22): a WhatsApp `wamid` base64-decodes to a structure carrying
 the counterparty E.164 number in the clear, so emitting one raw would defeat
 mask_wa_id. References are emitted as opaque, deterministic handles instead —
 correlatable across results, but carrying no recoverable identifier."""
+
 import hashlib
 
 

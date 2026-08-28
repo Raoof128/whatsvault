@@ -17,10 +17,10 @@ class FakeMeta:
 
     def send_text(self, *, phone_number_id, recipient_wa_id, body) -> dict:
         if self.mode == "timeout_after_send":
-            self.sends.append((recipient_wa_id, body))   # went out, response lost
+            self.sends.append((recipient_wa_id, body))  # went out, response lost
             raise TimeoutAfterSend()
         if self.mode == "connect_fail":
-            raise ConnectFailed()                         # nothing sent
+            raise ConnectFailed()  # nothing sent
         self.sends.append((recipient_wa_id, body))
         if self.mode == "ok":
             return {"outcome": "SUBMITTED", "wamid": "wamid.NEW"}

@@ -6,7 +6,7 @@ def test_plain_body_safe():
 
 
 def test_legit_persian_zwnj_is_safe():
-    assert G.scan("می‌روم")["safe"] is True   # U+200C ZWNJ inside Persian must NOT be flagged (#15)
+    assert G.scan("می‌روم")["safe"] is True  # U+200C ZWNJ inside Persian must NOT be flagged (#15)
 
 
 def test_bidi_override_flagged():
@@ -15,7 +15,7 @@ def test_bidi_override_flagged():
 
 
 def test_latin_cyrillic_homoglyph_mix_flagged():
-    r = G.scan("pаypal")   # Cyrillic 'а'
+    r = G.scan("pаypal")  # Cyrillic 'а'
     assert r["safe"] is False and "mixed_latin_cyrillic" in r["reasons"]
 
 

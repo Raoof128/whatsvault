@@ -1,6 +1,7 @@
 """MCP audit log (ledger #21). Argument hashes are keyed HMACs (audit key in the
 keyring), never plain SHA256 — a low-entropy query like a contact name would be
 trivially dictionary-recoverable from a bare SHA256. Content is never stored."""
+
 import hashlib
 import hmac
 import json
@@ -18,5 +19,6 @@ def args_hmac(audit_key: bytes, args: dict) -> str:
 def record(control_conn, audit_key, *, actor, tool, args, outcome, now_ms) -> None:
     control_conn.execute(
         "INSERT INTO audit_log(id, actor, tool, args_hash, outcome, ts_ms) VALUES(?,?,?,?,?,?)",
-        (ids.new_id("aud"), actor, tool, args_hmac(audit_key, args), outcome, now_ms))
+        (ids.new_id("aud"), actor, tool, args_hmac(audit_key, args), outcome, now_ms),
+    )
     control_conn.commit()

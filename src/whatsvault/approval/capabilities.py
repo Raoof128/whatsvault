@@ -3,14 +3,21 @@ IPHONE (Face ID -> Secure Enclave signing key); the Mac VERIFIES and stores it, 
 never mints one — there is no mint_grant here. verify_and_consume re-verifies the stored
 signature against the CURRENT active device key, so a revoked device's grants stop
 working. The MCP may use a grant but can never create/extend/re-scope one."""
+
 from . import devices, verify
 
 DOMAIN = b"WHATSVAULT-CAPABILITY-V1\n"
 VERSION = 1
 _FIELDS = [
-    ("capability_id", "str"), ("device_id", "str"), ("account_id", "str"),
-    ("conversation_id", "str"), ("action", "str"), ("created_at_ms", "u64"),
-    ("expires_at_ms", "u64"), ("max_actions", "u64"), ("nonce", "bytes"),
+    ("capability_id", "str"),
+    ("device_id", "str"),
+    ("account_id", "str"),
+    ("conversation_id", "str"),
+    ("action", "str"),
+    ("created_at_ms", "u64"),
+    ("expires_at_ms", "u64"),
+    ("max_actions", "u64"),
+    ("nonce", "bytes"),
 ]
 
 
@@ -48,9 +55,19 @@ def store_grant(control_conn, fields: dict, signature: bytes) -> str:
         "INSERT INTO capability_grants(capability_id, device_id, account_id, conversation_id, action, "
         "created_at_ms, expires_at_ms, max_actions, used_count, nonce, signature, status) "
         "VALUES(?,?,?,?,?,?,?,?,0,?,?, 'ACTIVE')",
-        (fields["capability_id"], fields["device_id"], fields.get("account_id"),
-         fields.get("conversation_id"), fields["action"], fields.get("created_at_ms"),
-         fields.get("expires_at_ms"), fields.get("max_actions"), fields.get("nonce"), signature))
+        (
+            fields["capability_id"],
+            fields["device_id"],
+            fields.get("account_id"),
+            fields.get("conversation_id"),
+            fields["action"],
+            fields.get("created_at_ms"),
+            fields.get("expires_at_ms"),
+            fields.get("max_actions"),
+            fields.get("nonce"),
+            signature,
+        ),
+    )
     control_conn.commit()
     return fields["capability_id"]
 
@@ -59,7 +76,9 @@ def verify_and_consume(control_conn, action, conversation_id, now_ms) -> bool:
     rows = control_conn.execute(
         "SELECT capability_id, device_id, account_id, created_at_ms, expires_at_ms, max_actions, "
         "used_count, nonce, signature FROM capability_grants "
-        "WHERE action=? AND conversation_id=? AND status='ACTIVE'", (action, conversation_id)).fetchall()
+        "WHERE action=? AND conversation_id=? AND status='ACTIVE'",
+        (action, conversation_id),
+    ).fetchall()
     for r in rows:
         key = devices.active_signing_key(control_conn, r["device_id"])
         if key is None:
@@ -68,16 +87,23 @@ def verify_and_consume(control_conn, action, conversation_id, now_ms) -> bool:
             continue
         if r["max_actions"] is not None and r["used_count"] >= r["max_actions"]:
             continue
-        fields = {"capability_id": r["capability_id"], "device_id": r["device_id"],
-                  "account_id": r["account_id"], "conversation_id": conversation_id, "action": action,
-                  "created_at_ms": r["created_at_ms"], "expires_at_ms": r["expires_at_ms"],
-                  "max_actions": r["max_actions"],
-                  "nonce": bytes(r["nonce"]) if r["nonce"] is not None else None}
+        fields = {
+            "capability_id": r["capability_id"],
+            "device_id": r["device_id"],
+            "account_id": r["account_id"],
+            "conversation_id": conversation_id,
+            "action": action,
+            "created_at_ms": r["created_at_ms"],
+            "expires_at_ms": r["expires_at_ms"],
+            "max_actions": r["max_actions"],
+            "nonce": bytes(r["nonce"]) if r["nonce"] is not None else None,
+        }
         if not verify.verify(encode_grant(fields), bytes(r["signature"]), key):
             continue
         cur = control_conn.execute(
             "UPDATE capability_grants SET used_count=used_count+1 WHERE capability_id=? AND used_count=?",
-            (r["capability_id"], r["used_count"]))
+            (r["capability_id"], r["used_count"]),
+        )
         if cur.rowcount == 1:
             control_conn.commit()
             return True

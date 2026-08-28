@@ -1,5 +1,6 @@
 import re
 import subprocess
+from pathlib import Path
 
 _PEM = re.compile(rb"-----BEGIN (?:RSA |EC )?PRIVATE KEY-----")
 _LONG_HEX_ASSIGN = re.compile(rb"""=\s*["'][0-9a-fA-F]{64,}["']""")
@@ -18,7 +19,7 @@ def test_no_private_keys_or_key_literals_committed():
             offenders.append(f + " (secret-bearing file type must not be tracked)")
             continue
         try:
-            data = open(f, "rb").read()
+            data = Path(f).read_bytes()
         except (IsADirectoryError, FileNotFoundError):
             continue
         if _PEM.search(data):

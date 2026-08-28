@@ -4,6 +4,7 @@ The launchd unit exits 1 on a missing Keychain key and KeepAlive restarts it, so
 an unprovisioned daemon presents as a restart loop rather than a clear error.
 These make the precondition inspectable and fixable from the CLI.
 """
+
 import os
 
 import pytest
@@ -18,8 +19,10 @@ from whatsvault.mcp import acl, audit, auth
 
 @pytest.fixture
 def dbs(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     v.execute("INSERT INTO accounts(id,phone_number_id) VALUES('acc','pn')")
     v.execute("INSERT INTO conversations(id,account_id,type) VALUES('cnv','acc','dm')")
     v.commit()
@@ -44,7 +47,7 @@ def test_local_only_count_is_reported(dbs):
     acl.set_visibility(v, "cnv", "LOCAL_ONLY")
     f = _by(doctor.check_mcp(v, c))
     assert "1" in f["mcp_local_only_conversations"]["detail"]
-    assert f["mcp_local_only_conversations"]["ok"] is True   # informational, never a failure
+    assert f["mcp_local_only_conversations"]["ok"] is True  # informational, never a failure
 
 
 def test_key_checks_are_skipped_without_a_keystore(dbs):
@@ -68,7 +71,7 @@ def test_key_checks_run_when_a_keystore_is_given(dbs):
 
 def test_missing_audit_log_is_detected(dbs, tmp_path):
     v, _ = dbs
-    bare = C.open_db(str(tmp_path / "bare.db"), os.urandom(32))   # never migrated
+    bare = C.open_db(str(tmp_path / "bare.db"), os.urandom(32))  # never migrated
     f = _by(doctor.check_mcp(v, bare))
     assert f["audit_log_present"]["ok"] is False
 
@@ -144,7 +147,7 @@ def test_existing_key_of_wrong_length_is_reported_not_overwritten(dbs):
     out = commands.cmd_mcp_provision(commands.Ctx(v, c, ks=ks), {})
     assert out["ok"] is False
     assert auth.TOKEN_KEY_NAME in out["error"]
-    assert ks._d[auth.TOKEN_KEY_NAME] == b"too-short"    # untouched
+    assert ks._d[auth.TOKEN_KEY_NAME] == b"too-short"  # untouched
 
 
 def test_provisioned_token_actually_authenticates_the_daemon(dbs):
@@ -184,9 +187,18 @@ def test_provisioned_token_actually_authenticates_the_daemon(dbs):
     else:
         pytest.fail("server did not start")
 
-    body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
-        "protocolVersion": "2025-06-18", "capabilities": {},
-        "clientInfo": {"name": "pytest", "version": "1"}}}).encode()
+    body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2025-06-18",
+                "capabilities": {},
+                "clientInfo": {"name": "pytest", "version": "1"},
+            },
+        }
+    ).encode()
 
     def status(tok):
         req = urllib.request.Request(f"http://127.0.0.1:{port}/mcp", data=body, method="POST")
@@ -195,13 +207,15 @@ def test_provisioned_token_actually_authenticates_the_daemon(dbs):
         if tok:
             req.add_header("Authorization", f"Bearer {tok}")
         try:
-            return urllib.request.urlopen(req, timeout=15).status
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return r.status
         except urllib.error.HTTPError as e:
-            return e.code
+            with e:  # HTTPError is a file-like response; closing avoids a leak
+                return e.code
 
     try:
         assert status(None) == 401
         assert status("wrong-token") == 401
-        assert status(token) == 200          # the provisioned token really works
+        assert status(token) == 200  # the provisioned token really works
     finally:
         srv.should_exit = True

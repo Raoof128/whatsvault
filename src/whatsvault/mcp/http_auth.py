@@ -9,6 +9,7 @@ Default-deny: every path is protected. 127.0.0.1 is not an auth boundary (any
 local process running as the user can connect), so binding loopback does not
 substitute for this check.
 """
+
 from . import auth
 
 _UNAUTHORISED = b'{"error":"unauthorized"}'
@@ -45,12 +46,16 @@ class BearerAuthMiddleware:
         return auth.require_token(provided.strip(), self._token)
 
     async def _reject(self, send) -> None:
-        await send({
-            "type": "http.response.start",
-            "status": 401,
-            # RFC 6750: tell the client how to authenticate, without echoing input.
-            "headers": [(b"www-authenticate", b'Bearer realm="whatsvault-mcp"'),
-                        (b"content-type", b"application/json"),
-                        (b"content-length", str(len(_UNAUTHORISED)).encode())],
-        })
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 401,
+                # RFC 6750: tell the client how to authenticate, without echoing input.
+                "headers": [
+                    (b"www-authenticate", b'Bearer realm="whatsvault-mcp"'),
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(_UNAUTHORISED)).encode()),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": _UNAUTHORISED})

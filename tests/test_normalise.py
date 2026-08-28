@@ -2,8 +2,8 @@ from whatsvault.search import normalise as N
 
 
 def test_yeh_and_kaf_unified():
-    assert N.to_search("علي") == N.to_search("علی")   # Arabic vs Persian Yeh
-    assert N.to_search("كتاب") == N.to_search("کتاب")   # Arabic vs Persian Kaf
+    assert N.to_search("علي") == N.to_search("علی")  # Arabic vs Persian Yeh
+    assert N.to_search("كتاب") == N.to_search("کتاب")  # Arabic vs Persian Kaf
 
 
 def test_zwnj_becomes_space_in_lexical():
@@ -38,7 +38,7 @@ def test_mapping_spans_original_including_internal_tatweel():
     j = norm.find(term)
     assert j != -1
     span = (origin[j], origin[j + len(term) - 1] + 1)
-    assert orig[span[0]:span[1]] == "کتـاب"  # maps back to ORIGINAL incl. the stripped tatweel
+    assert orig[span[0] : span[1]] == "کتـاب"  # maps back to ORIGINAL incl. the stripped tatweel
 
 
 def test_version_present():

@@ -1,31 +1,35 @@
 """Prefixed ULID identifiers (spec §3.2). Ordering is a stable tie-breaker
 only, never message chronology."""
+
 import re
+
 from ulid import ULID
 
-PREFIXES = frozenset({
-    "acc",  # accounts
-    "cnt",  # contacts
-    "cnv",  # conversations
-    "src",  # conversation_sources
-    "msg",  # messages
-    "rev",  # message_revisions
-    "att",  # attachments
-    "evt",  # ingest_events / message_status_events
-    "drf",  # drafts
-    "apv",  # approvals
-    "atm",  # send_attempts
-    "cap",  # capability_grants
-    "dev",  # approval_devices
-    "bat",  # import_batches
-    "imp",  # import_participants
-    "dlq",  # ingest_dlq
-    "tpl",  # templates
-    "job",  # scheduled_jobs
-    "run",  # job_runs
-    "rcn",  # reconciliation_candidates
-    "aud",  # audit_log
-})
+PREFIXES = frozenset(
+    {
+        "acc",  # accounts
+        "cnt",  # contacts
+        "cnv",  # conversations
+        "src",  # conversation_sources
+        "msg",  # messages
+        "rev",  # message_revisions
+        "att",  # attachments
+        "evt",  # ingest_events / message_status_events
+        "drf",  # drafts
+        "apv",  # approvals
+        "atm",  # send_attempts
+        "cap",  # capability_grants
+        "dev",  # approval_devices
+        "bat",  # import_batches
+        "imp",  # import_participants
+        "dlq",  # ingest_dlq
+        "tpl",  # templates
+        "job",  # scheduled_jobs
+        "run",  # job_runs
+        "rcn",  # reconciliation_candidates
+        "aud",  # audit_log
+    }
+)
 
 _ULID_RE = re.compile(r"[0-9A-HJKMNP-TV-Z]{26}")
 
@@ -46,6 +50,6 @@ def validate(prefix: str, value: str) -> str:
     marker = f"{prefix}_"
     if not value.startswith(marker):
         raise IdError(f"id {value!r} does not carry prefix {prefix!r}")
-    if not _ULID_RE.fullmatch(value[len(marker):]):
+    if not _ULID_RE.fullmatch(value[len(marker) :]):
         raise IdError(f"id {value!r} has malformed ULID body")
     return value

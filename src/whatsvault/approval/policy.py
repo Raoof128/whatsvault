@@ -4,6 +4,7 @@ THE single source of send policy. Both drafts.prepare and sender.execute_write i
 and call evaluate(); the sender re-evaluates inside the permission-to-transmit
 transaction and is authoritative. Reason codes are stable so callers and tests can
 assert on specific failures."""
+
 from dataclasses import dataclass, field
 
 
@@ -18,7 +19,7 @@ def evaluate(ctx: dict, *, phase: str) -> PolicyResult:
     if not ctx.get("recipient_wa_id"):
         failed.append("P1_RECIPIENT_UNBOUND")
     if ctx.get("kind", "text") == "text" and not ctx.get("window_open"):
-        failed.append("P2_WINDOW_CLOSED")           # free-form text needs an open 24h window
+        failed.append("P2_WINDOW_CLOSED")  # free-form text needs an open 24h window
     if not ctx.get("account_ok", True):
         failed.append("P3_ACCOUNT_BINDING")
     now, exp = ctx.get("now_ms"), ctx.get("expires_at_ms")

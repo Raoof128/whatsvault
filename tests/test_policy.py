@@ -2,9 +2,17 @@ from whatsvault.approval import policy as P
 
 
 def _ctx(**kw):
-    base = dict(recipient_wa_id="61999", kind="text", account_ok=True, now_ms=100,
-                expires_at_ms=1000, device_active=True, rate_ok=True, recipient_is_group=False,
-                window_open=True)
+    base = {
+        "recipient_wa_id": "61999",
+        "kind": "text",
+        "account_ok": True,
+        "now_ms": 100,
+        "expires_at_ms": 1000,
+        "device_active": True,
+        "rate_ok": True,
+        "recipient_is_group": False,
+        "window_open": True,
+    }
     base.update(kw)
     return base
 

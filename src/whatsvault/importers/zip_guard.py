@@ -5,6 +5,7 @@ over-count, per-file over-size, compression-ratio bombs, and enforces a STREAMIN
 expanded-byte cap (counts bytes actually decompressed, so a lying size header is
 still caught). Files are classified by EXTENSION ONLY — this guard does not sniff
 content types, and does not claim to."""
+
 import os
 import re
 import stat
@@ -26,15 +27,16 @@ class AmbiguousTranscript(Exception):
 def _is_unsafe_name(name: str) -> bool:
     if not name:
         return True
-    if name.startswith("/") or name.startswith("\\") or "\\" in name:
+    if name.startswith(("/", "\\")) or "\\" in name:
         return True
     if _DRIVE_RE.match(name):
         return True
     return ".." in name.split("/")
 
 
-def safe_extract(zip_path: str, dest_dir: str, *, max_files: int, max_total_bytes: int,
-                 max_ratio: int, max_file_bytes: int) -> list[str]:
+def safe_extract(
+    zip_path: str, dest_dir: str, *, max_files: int, max_total_bytes: int, max_ratio: int, max_file_bytes: int
+) -> list[str]:
     os.makedirs(dest_dir, exist_ok=True)
     os.chmod(dest_dir, 0o700)
     dest_real = os.path.realpath(dest_dir)

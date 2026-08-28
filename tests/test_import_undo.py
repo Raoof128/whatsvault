@@ -1,5 +1,6 @@
 import hashlib
 import os
+
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
 from whatsvault.importers import whatsapp_export as W
@@ -53,7 +54,13 @@ def test_undo_sets_undone_at_and_clears_sources(tmp_path):
     conn = _vault(tmp_path)
     r = _imp(conn)
     W.undo_batch(conn, r["batch_id"])
-    assert conn.execute("SELECT undone_at_ms FROM import_batches WHERE id=?",
-                        (r["batch_id"],)).fetchone()[0] is not None
-    assert conn.execute("SELECT COUNT(*) FROM conversation_sources WHERE import_batch_id=?",
-                        (r["batch_id"],)).fetchone()[0] == 0
+    assert (
+        conn.execute("SELECT undone_at_ms FROM import_batches WHERE id=?", (r["batch_id"],)).fetchone()[0]
+        is not None
+    )
+    assert (
+        conn.execute(
+            "SELECT COUNT(*) FROM conversation_sources WHERE import_batch_id=?", (r["batch_id"],)
+        ).fetchone()[0]
+        == 0
+    )

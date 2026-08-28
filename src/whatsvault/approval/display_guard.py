@@ -3,6 +3,7 @@ human approves glyphs — so bodies with hidden/spoofed content are flagged befo
 one-tap path. Persian-aware: U+200C ZWNJ is legitimate inside Arabic-script runs and
 is NOT flagged; bidi overrides/isolates are high-risk; other invisibles warn; a
 Latin/Cyrillic homoglyph mix is flagged. Display-only; never mutates the bytes."""
+
 _BIDI = {0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x200E, 0x200F}
 _ZWNJ = 0x200C
 _OTHER_INVISIBLE = {0x200B, 0x2060, 0xFEFF, 0x2061, 0x2062, 0x2063}

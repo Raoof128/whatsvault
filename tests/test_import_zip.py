@@ -1,10 +1,12 @@
 import os
 import stat
 import zipfile
+
 import pytest
+
 from whatsvault.importers import zip_guard as Z
 
-_LIM = dict(max_files=100, max_total_bytes=10_000, max_ratio=500, max_file_bytes=10_000)
+_LIM = {"max_files": 100, "max_total_bytes": 10_000, "max_ratio": 500, "max_file_bytes": 10_000}
 
 
 def _zip(path, entries):
@@ -53,8 +55,14 @@ def test_streaming_byte_cap_rejects_oversize(tmp_path):
     zp = tmp_path / "big.zip"
     _zip(zp, [("chat.txt", "A" * 5000)])
     with pytest.raises(Z.HostileZip):
-        Z.safe_extract(str(zp), str(tmp_path / "o4"),
-                       max_files=100, max_total_bytes=1000, max_ratio=100_000, max_file_bytes=1_000_000)
+        Z.safe_extract(
+            str(zp),
+            str(tmp_path / "o4"),
+            max_files=100,
+            max_total_bytes=1000,
+            max_ratio=100_000,
+            max_file_bytes=1_000_000,
+        )
 
 
 def test_two_transcripts_ambiguous():

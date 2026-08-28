@@ -1,13 +1,22 @@
 import hashlib
 import json
 import pathlib
+
 from whatsvault.approval import canonical as CN
 
 _BASE = {
-    "decision": "APPROVE", "draft_id": "drf_1", "account_id": "acc_1", "phone_number_id": "PN1",
-    "recipient_wa_id": "61999", "body_sha256": hashlib.sha256(b"hi").digest(), "kind": "text",
-    "nonce": bytes(range(32)), "created_at_ms": 1700000000000, "expires_at_ms": 1700000600000,
-    "device_id": "dev_1", "attachments_digest": CN.attachments_digest([]),
+    "decision": "APPROVE",
+    "draft_id": "drf_1",
+    "account_id": "acc_1",
+    "phone_number_id": "PN1",
+    "recipient_wa_id": "61999",
+    "body_sha256": hashlib.sha256(b"hi").digest(),
+    "kind": "text",
+    "nonce": bytes(range(32)),
+    "created_at_ms": 1700000000000,
+    "expires_at_ms": 1700000600000,
+    "device_id": "dev_1",
+    "attachments_digest": CN.attachments_digest([]),
 }
 
 
@@ -30,4 +39,4 @@ def test_target_and_reply_are_independent_slots():
     base = CN.encode(_BASE)
     only_reply = CN.encode({**_BASE, "reply_to_wamid": "wamid.R"})
     only_target = CN.encode({**_BASE, "target_message_wamid": "wamid.T"})
-    assert only_reply != base and only_target != base and only_reply != only_target
+    assert base not in (only_reply, only_target) and only_reply != only_target

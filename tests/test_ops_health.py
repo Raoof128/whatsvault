@@ -1,5 +1,7 @@
 import os
+
 import pytest
+
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
 from whatsvault.ingest import dlq
@@ -7,8 +9,10 @@ from whatsvault.ops import health, structlog
 
 
 def _dbs(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     return v, c
 
 

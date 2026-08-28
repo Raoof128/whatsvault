@@ -1,5 +1,6 @@
 import os
 import stat
+
 from whatsvault.ops import fsperms, paths
 
 
@@ -33,6 +34,6 @@ def test_check_flags_loosened_dir(tmp_path):
     p = paths.from_env({"WHATSVAULT_HOME": str(tmp_path / "wv")})
     fsperms.ensure_dir(p.home)
     fsperms.ensure_dir(p.blobs_dir)
-    os.chmod(p.blobs_dir, 0o755)   # loosen
+    os.chmod(p.blobs_dir, 0o755)  # loosen
     findings = fsperms.check(p)
     assert any(not f["ok"] and p.blobs_dir in f["detail"] for f in findings)

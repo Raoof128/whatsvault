@@ -1,5 +1,6 @@
 """Filesystem hardening (ledger #52): dirs 0700, secret files 0600, umask 077.
 chmod is applied AFTER creation so the result is independent of the process umask."""
+
 import os
 
 
@@ -24,11 +25,9 @@ def check(paths) -> list:
     for d in paths.all_dirs():
         if os.path.isdir(d):
             m = os.stat(d).st_mode & 0o777
-            findings.append({"check": "dir_mode", "ok": m == 0o700,
-                             "detail": f"{d} mode {oct(m)}"})
+            findings.append({"check": "dir_mode", "ok": m == 0o700, "detail": f"{d} mode {oct(m)}"})
     for f in paths.secret_files():
         if os.path.isfile(f):
             m = os.stat(f).st_mode & 0o777
-            findings.append({"check": "file_mode", "ok": m == 0o600,
-                             "detail": f"{f} mode {oct(m)}"})
+            findings.append({"check": "file_mode", "ok": m == 0o600, "detail": f"{f} mode {oct(m)}"})
     return findings

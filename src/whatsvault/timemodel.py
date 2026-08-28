@@ -1,4 +1,5 @@
 """Time as uncertainty intervals (spec §3.3)."""
+
 import datetime as dt
 from dataclasses import dataclass
 from enum import Enum
@@ -46,7 +47,7 @@ class DstClass(Enum):
 def classify_local(zone: str, local_dt: dt.datetime) -> DstClass:
     tz = ZoneInfo(zone)
     aware = local_dt.replace(tzinfo=tz)
-    normalised = aware.astimezone(dt.timezone.utc).astimezone(tz).replace(tzinfo=None)
+    normalised = aware.astimezone(dt.UTC).astimezone(tz).replace(tzinfo=None)
     if normalised != local_dt:
         return DstClass.NONEXISTENT
     off0 = local_dt.replace(tzinfo=tz, fold=0).utcoffset()

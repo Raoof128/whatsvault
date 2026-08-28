@@ -1,6 +1,7 @@
 """HTTP-transport auth gate (#19, #18). Auth must live on the transport, not in
 the tool signature — a `bearer` tool parameter would be published in the tool's
 JSON schema, i.e. the server would ask the model to hand over the secret."""
+
 import asyncio
 
 import pytest
@@ -24,8 +25,12 @@ def _drive(app, scope):
 
 
 def _http_scope(headers):
-    return {"type": "http", "method": "POST", "path": "/mcp",
-            "headers": [(k.lower().encode(), v.encode()) for k, v in headers]}
+    return {
+        "type": "http",
+        "method": "POST",
+        "path": "/mcp",
+        "headers": [(k.lower().encode(), v.encode()) for k, v in headers],
+    }
 
 
 @pytest.fixture

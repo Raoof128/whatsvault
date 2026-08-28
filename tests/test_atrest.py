@@ -1,7 +1,8 @@
 import pytest
 from cryptography.exceptions import InvalidTag
+
 from whatsvault.crypto import atrest
-from whatsvault.crypto.keystore import MemoryKeyStore, KeyExists, KeyMissing
+from whatsvault.crypto.keystore import KeyExists, KeyMissing, MemoryKeyStore
 
 
 def test_provision_then_require():

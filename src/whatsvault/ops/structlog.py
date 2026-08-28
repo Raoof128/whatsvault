@@ -1,5 +1,6 @@
 """Content-free structured logging (5x-A, ledger #57). event() returns a log record but
 REFUSES any field that could carry WhatsApp message content, so logs never leak bodies."""
+
 _FORBIDDEN_KEYS = {"text", "body", "caption", "message", "text_original", "display_text", "subject"}
 
 

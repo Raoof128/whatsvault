@@ -11,29 +11,38 @@ re-driven, names its blocker, and exits cleanly. It deliberately contains NO
 transmit path — acquiring one here by accident would put send authority in a
 daemon instead of behind the phone's Secure Enclave signature.
 """
+
 import sys
 
 from whatsvault.ops import recovery, structlog
 
 BLOCKED_ON = "whatsvault_meta_daemon"
-DETAIL = ("whatsvault-meta is not built and live Meta is Phase-0-gated (Gates 1-2); "
-          "approval envelopes are surfaced for an operator, never auto-dispatched")
+DETAIL = (
+    "whatsvault-meta is not built and live Meta is Phase-0-gated (Gates 1-2); "
+    "approval envelopes are surfaced for an operator, never auto-dispatched"
+)
 
 
 def run(vault_conn, control_conn, now_ms) -> dict:
     startup = recovery.run_startup(vault_conn, control_conn, now_ms)
-    return structlog.event({
-        "service": "dispatcher", "status": "not_started",
-        "blocked_on": BLOCKED_ON, "detail": DETAIL,
-        "pending_approvals": startup["pending_approvals"],
-        "submitting_recovered": startup["submitting_recovered"],
-    })
+    return structlog.event(
+        {
+            "service": "dispatcher",
+            "status": "not_started",
+            "blocked_on": BLOCKED_ON,
+            "detail": DETAIL,
+            "pending_approvals": startup["pending_approvals"],
+            "submitting_recovered": startup["submitting_recovered"],
+        }
+    )
 
 
 def main():  # pragma: no cover - process entrypoint
     import json
     import time
+
     from whatsvault.ops import daemon
+
     vault_conn, control_conn, blocked = daemon.open_databases("dispatcher")
     if blocked is not None:
         print(json.dumps(blocked))

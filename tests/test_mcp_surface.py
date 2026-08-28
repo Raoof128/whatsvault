@@ -1,4 +1,5 @@
 import os
+
 from apps.mcp import server
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
@@ -9,14 +10,18 @@ def test_no_forbidden_tool_registered():
 
 
 def test_expected_read_tools():
-    assert server.REGISTERED_TOOLS == {
-        "search", "get_messages", "list_chats", "get_message_status",
-        "get_conversation_window", "list_templates",
-    }
+    assert {
+        "search",
+        "get_messages",
+        "list_chats",
+        "get_message_status",
+        "get_conversation_window",
+        "list_templates",
+    } == server.REGISTERED_TOOLS
 
 
 def test_all_tools_read_only():
-    for name, a in server.TOOL_ANNOTATIONS.items():
+    for a in server.TOOL_ANNOTATIONS.values():
         assert a["read_only_hint"] is True and a["open_world_hint"] is False
 
 
@@ -24,8 +29,11 @@ def test_handlers_take_no_bearer_argument(tmp_path):
     """#19 regression: auth moved to the transport. A `bearer` parameter here
     would be published in the tool JSON schema — asking the model for the secret."""
     import inspect
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     handlers = server.build_tool_handlers(v, c, os.urandom(32))
     for name, fn in handlers.items():
         params = inspect.signature(fn).parameters
@@ -33,8 +41,10 @@ def test_handlers_take_no_bearer_argument(tmp_path):
 
 
 def test_handlers_still_audit(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     handlers = server.build_tool_handlers(v, c, os.urandom(32))
     assert handlers["list_templates"]()["status"] == "OK"
     row = c.execute("SELECT tool, args_hash FROM audit_log").fetchone()
@@ -44,9 +54,13 @@ def test_handlers_still_audit(tmp_path):
 def test_build_app_is_auth_wrapped_and_refuses_anonymous(tmp_path):
     """The transport must not be reachable without the token (#18/#19)."""
     import asyncio
+
     from whatsvault.mcp.http_auth import BearerAuthMiddleware
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     app = server.build_app(v, c, "tok", os.urandom(32))
     assert isinstance(app, BearerAuthMiddleware)
 
@@ -58,15 +72,16 @@ def test_build_app_is_auth_wrapped_and_refuses_anonymous(tmp_path):
     async def send(m):
         sent.append(m)
 
-    asyncio.run(app({"type": "http", "method": "POST", "path": "/mcp", "headers": []},
-                    receive, send))
+    asyncio.run(app({"type": "http", "method": "POST", "path": "/mcp", "headers": []}, receive, send))
     assert next(m["status"] for m in sent if m["type"] == "http.response.start") == 401
 
 
 def test_build_app_enables_dns_rebinding_protection(tmp_path):
     """A loopback listener still needs Host/Origin validation."""
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(c, "control")
     settings = server.transport_security_settings()
     assert settings.enable_dns_rebinding_protection is True
     assert settings.allowed_hosts, "allowed_hosts must be pinned, not empty"
@@ -79,9 +94,11 @@ def test_main_symbols_resolve():
     draft referenced a non-existent whatsvault.db.paths and a 1-arg
     KeyStore.require, neither of which any test would have caught)."""
     import inspect
+
     from whatsvault.crypto.keystore import KeyringKeyStore
     from whatsvault.db import connection as C
-    from whatsvault.mcp import audit, auth as auth_mod
+    from whatsvault.mcp import audit
+    from whatsvault.mcp import auth as auth_mod
     from whatsvault.ops import daemon, fsperms, paths
 
     assert callable(fsperms.harden_umask)

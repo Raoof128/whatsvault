@@ -1,17 +1,28 @@
 import os
+
 import pytest
+
 from whatsvault.approval import drafts as DR
 from whatsvault.db import connection as C
 from whatsvault.db import migrations as M
 
 
 def _control(tmp_path):
-    conn = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(conn, "control"); return conn
+    conn = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    M.migrate(conn, "control")
+    return conn
 
 
 def _prep(conn, **kw):
-    base = dict(conversation_id="cnv", account_id="acc", phone_number_id="PN1",
-                recipient_wa_id="61999", text="hello", now_ms=1000, window_open=True)
+    base = {
+        "conversation_id": "cnv",
+        "account_id": "acc",
+        "phone_number_id": "PN1",
+        "recipient_wa_id": "61999",
+        "text": "hello",
+        "now_ms": 1000,
+        "window_open": True,
+    }
     base.update(kw)
     return DR.prepare(conn, **base)
 
@@ -19,8 +30,9 @@ def _prep(conn, **kw):
 def test_prepare_pending_with_nonce(tmp_path):
     conn = _control(tmp_path)
     r = _prep(conn)
-    row = conn.execute("SELECT state, nonce, recipient_wa_id FROM drafts WHERE id=?",
-                       (r["draft_id"],)).fetchone()
+    row = conn.execute(
+        "SELECT state, nonce, recipient_wa_id FROM drafts WHERE id=?", (r["draft_id"],)
+    ).fetchone()
     assert row[0] == "PENDING_APPROVAL" and len(bytes(row[1])) == 32 and row[2] == "61999"
 
 
@@ -40,4 +52,5 @@ def test_idempotent_repeat_prepare(tmp_path):
 
 def test_prepare_and_sender_share_one_policy_module():
     from whatsvault.approval import drafts, policy, sender
-    assert drafts.policy is policy and sender.policy is policy   # #11 single source
+
+    assert drafts.policy is policy and sender.policy is policy  # #11 single source

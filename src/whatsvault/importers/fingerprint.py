@@ -4,6 +4,7 @@ Never fold Yeh/Kaf/digits here — search normalisation is a separate, disposabl
 concern. content_fingerprint distinguishes byte-distinct originals; import_fingerprint
 adds conversation/time-bucket/sender/occurrence so identical repeated lines get
 distinct identities (via occurrence_index) yet re-imports dedupe deterministically."""
+
 import hashlib
 
 CONTENT_VERSION = 1
@@ -22,9 +23,15 @@ def content_fingerprint(message_type: str, original_text: str | None) -> str:
     return hashlib.sha256(blob).hexdigest()
 
 
-def import_fingerprint(fingerprint_version: int, conversation_key: str, ts_bucket: int,
-                       sender_key: str, message_type: str, content_fp: str,
-                       occurrence_index: int) -> str:
+def import_fingerprint(
+    fingerprint_version: int,
+    conversation_key: str,
+    ts_bucket: int,
+    sender_key: str,
+    message_type: str,
+    content_fp: str,
+    occurrence_index: int,
+) -> str:
     blob = b"WHATSVAULT-IMPORT-FP-V1\n" + _lp(
         fingerprint_version.to_bytes(4, "big"),
         conversation_key.encode("utf-8"),
