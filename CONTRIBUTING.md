@@ -10,7 +10,7 @@ anything touching a security boundary.
 `sqlcipher3` compiles from source against it; there is no macOS arm64 wheel.
 
 ```bash
-git clone https://github.com/raouf/whatsvault.git
+git clone https://github.com/Raoof128/whatsvault.git
 cd whatsvault
 make install                 # .venv + the project with dev extras
 .venv/bin/pre-commit install # run the same gates CI does, before each commit

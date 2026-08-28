@@ -4,7 +4,7 @@
 
 ```bash
 brew install sqlcipher          # sqlcipher3 builds against this; no arm64 wheel exists
-git clone https://github.com/raouf/whatsvault.git
+git clone https://github.com/Raoof128/whatsvault.git
 cd whatsvault
 make install
 make check                      # lint + format + 353 tests

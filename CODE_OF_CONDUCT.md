@@ -53,7 +53,7 @@ an individual is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behaviour may be
 reported to the maintainers through
-[GitHub Security Advisories](https://github.com/raouf/whatsvault/security/advisories/new)
+[GitHub Security Advisories](https://github.com/Raoof128/whatsvault/security/advisories/new)
 or by opening an issue requesting private contact. All complaints will be
 reviewed and investigated promptly and fairly.
 

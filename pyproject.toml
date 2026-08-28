@@ -47,10 +47,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/raouf/whatsvault"
-Documentation = "https://github.com/raouf/whatsvault/blob/main/docs/ARCHITECTURE.md"
-Changelog = "https://github.com/raouf/whatsvault/blob/main/CHANGELOG.md"
-Issues = "https://github.com/raouf/whatsvault/issues"
+Homepage = "https://github.com/Raoof128/whatsvault"
+Documentation = "https://github.com/Raoof128/whatsvault/blob/main/docs/ARCHITECTURE.md"
+Changelog = "https://github.com/Raoof128/whatsvault/blob/main/CHANGELOG.md"
+Issues = "https://github.com/Raoof128/whatsvault/issues"
 
 [project.scripts]
 whatsvault = "whatsvault.cli.main:main"

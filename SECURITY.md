@@ -7,7 +7,7 @@ incident, not an inconvenience, and the project is structured accordingly.
 
 **Please do not open a public issue for a security problem.**
 
-Report privately through [GitHub Security Advisories](https://github.com/raouf/whatsvault/security/advisories/new).
+Report privately through [GitHub Security Advisories](https://github.com/Raoof128/whatsvault/security/advisories/new).
 If that is unavailable to you, open a public issue containing only the words
 "security report, requesting private contact" and nothing else, and you will be
 given a private channel.

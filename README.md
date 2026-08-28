@@ -2,7 +2,7 @@
 
 **A local-first, encrypted archive of your own WhatsApp messages — searchable by an AI assistant, but never sendable by one.**
 
-[![CI](https://github.com/raouf/whatsvault/actions/workflows/ci.yml/badge.svg)](https://github.com/raouf/whatsvault/actions/workflows/ci.yml)
+[![CI](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml/badge.svg)](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-353%20passing-brightgreen.svg)](#testing)
@@ -71,7 +71,7 @@ A fuller walkthrough, including trust boundaries and the data model, is in [docs
 > `sqlcipher3` is a source build against Homebrew's SQLCipher — there is no prebuilt wheel for macOS arm64.
 
 ```bash
-git clone https://github.com/raouf/whatsvault.git
+git clone https://github.com/Raoof128/whatsvault.git
 cd whatsvault
 make install          # creates .venv and installs the project with dev extras
 make check            # lint + format check + the full test suite
