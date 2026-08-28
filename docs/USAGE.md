@@ -10,6 +10,23 @@ make install
 make check                      # lint + format + 353 tests
 ```
 
+## Create the vault
+
+```bash
+whatsvault init --reveal
+```
+
+This creates `~/.whatsvault` (override with `WHATSVAULT_HOME`), provisions four
+Keychain keys, creates both SQLCipher databases, runs every migration, and sets
+directories to `0700` and database files to `0600`.
+
+It is idempotent — a second run is a no-op — and it **refuses** to act if a
+database exists whose key is missing from the Keychain. SQLCipher keys are not
+recoverable, so minting a fresh one there would leave the existing data
+permanently unreadable. It reports the situation instead of "fixing" it.
+
+Without `--reveal` the MCP token is withheld; re-run with the flag to print it.
+
 ## Import an existing export
 
 This path needs no Meta account, no cloud, and no network.
@@ -52,11 +69,11 @@ is a derived artefact and can be rebuilt.
 ## Run the MCP server
 
 ```bash
-whatsvault mcp-provision --reveal    # mints two Keychain keys; prints the token once
 whatsvault-mcp
 ```
 
-`mcp-provision` is idempotent and **never rotates**: replacing the token would
+If you skipped `--reveal` at init, `whatsvault mcp-provision --reveal` prints the
+token without changing it. It is idempotent and **never rotates**: replacing the token would
 silently break an already-configured connector, and replacing the audit key would
 orphan every existing audit HMAC. Without `--reveal` the token is withheld,
 because the launchd units capture stdout to a log file.

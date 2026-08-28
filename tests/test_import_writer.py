@@ -94,3 +94,52 @@ def test_identical_lines_same_minute_are_distinct(tmp_path):
     text = "13/04/2026, 5:32 pm - Mona: ok\n13/04/2026, 5:32 pm - Mona: ok\n"
     res = _imp(conn, text=text)
     assert res["added"] == 2  # occurrence_index keeps identical lines distinct
+
+
+def test_imported_messages_are_searchable(tmp_path):
+    """An import is the only way to get data into the vault while live ingest is
+    Phase-0 gated, so an unindexed import makes search silently useless. doctor's
+    `search_missing` check already asserted this; nothing satisfied it.
+    """
+    from whatsvault import doctor
+    from whatsvault.search.query import SearchQuery
+    from whatsvault.search.query import run as search_run
+
+    conn = _vault(tmp_path)
+    W.import_batch(
+        conn,
+        "[01/02/2026, 14:32:01] Alice: meeting on saturday at the cafe\n",
+        source_sha256="a" * 64,
+        date_format="DMY",
+        tz_name="UTC",
+        conversation_id="cnv",
+        account_id="acc",
+        self_participant_label="Me",
+    )
+    assert conn.execute("SELECT COUNT(*) FROM search_documents").fetchone()[0] == 1
+    assert len(search_run(conn, SearchQuery(terms=["saturday"]))) == 1
+    missing = next(f for f in doctor.check_search(conn) if f["check"] == "search_missing")
+    assert missing["ok"] is True, missing["detail"]
+
+
+def test_reimport_does_not_duplicate_index_rows(tmp_path):
+    """Import is idempotent by fingerprint; the index must not drift from it."""
+    from whatsvault.search.query import SearchQuery
+    from whatsvault.search.query import run as search_run
+
+    conn = _vault(tmp_path)
+    text = "[01/02/2026, 14:32:01] Alice: meeting on saturday\n"
+    for _ in range(2):
+        W.import_batch(
+            conn,
+            text,
+            source_sha256="a" * 64,
+            date_format="DMY",
+            tz_name="UTC",
+            conversation_id="cnv",
+            account_id="acc",
+            self_participant_label="Me",
+        )
+    assert conn.execute("SELECT COUNT(*) FROM messages").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM search_documents").fetchone()[0] == 1
+    assert len(search_run(conn, SearchQuery(terms=["saturday"]))) == 1

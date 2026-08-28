@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 
 from .. import ids
 from ..crypto import atrest
+from ..search.index import stage_message
 from ..timemodel import from_local_minute
 from . import fingerprint as F
 from . import parse as P
@@ -198,6 +199,14 @@ def import_batch(
                         import_fp,
                     ),
                 )
+                # Index inside the import (INV-SEARCH: the index is derived and
+                # disposable). Without this an import leaves every message
+                # invisible to search — and while live ingest is Phase-0 gated,
+                # import is the ONLY way data enters the vault. doctor's
+                # `search_missing` check already asserted this; nothing satisfied
+                # it. Only new messages are indexed, so a re-import stays
+                # idempotent with the fingerprint dedupe above.
+                stage_message(vault_conn, msg_id, body)
                 added += 1
             vault_conn.execute(
                 "INSERT INTO message_import_observations(batch_id, message_id, sender_import_participant_id, "

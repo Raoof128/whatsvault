@@ -11,7 +11,7 @@ from ..approval import devices, reconcile
 from ..crypto import keystore
 from ..importers import whatsapp_export
 from ..mcp import acl, audit, auth
-from ..ops import health
+from ..ops import bootstrap, health, paths
 
 FORBIDDEN_VERBS = frozenset(
     {
@@ -86,6 +86,17 @@ def cmd_mcp_provision(ctx, args):
             "(avoid doing so where stdout is captured to a log)"
         )
     return out
+
+
+def cmd_init(ctx, args):
+    """Create the vault: runtime directories, both encrypted databases, and keys.
+
+    Takes no database connections — it runs before any exist — so it reads the
+    layout from the environment rather than from the context.
+    """
+    if ctx.ks is None:
+        return {"ok": False, "error": "no keystore available on this context"}
+    return bootstrap.init_vault(paths.from_env(), ctx.ks, reveal=bool(args.get("reveal")))
 
 
 def cmd_import(ctx, args):
@@ -251,6 +262,7 @@ def cmd_scheduler_disable(ctx, args):
 
 COMMANDS = {
     "doctor": cmd_doctor,
+    "init": cmd_init,
     "mcp-provision": cmd_mcp_provision,
     "mcp-visibility": cmd_mcp_visibility,
     "import": cmd_import,

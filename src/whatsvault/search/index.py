@@ -7,7 +7,13 @@ and rebuildable from messages.text_original."""
 from . import normalise as N
 
 
-def _index_one(conn, message_id: str, text_original) -> None:
+def stage_message(conn, message_id: str, text_original) -> None:
+    """Write the index rows for one message WITHOUT committing.
+
+    The caller owns the transaction. Import uses this so indexing lands in the
+    same transaction as the message insert; index_message() is the committing
+    convenience wrapper for callers that own no transaction.
+    """
     ts = N.to_search(text_original or "")
     tc = N.to_compact(text_original or "")
     row = conn.execute(
@@ -37,7 +43,7 @@ def _index_one(conn, message_id: str, text_original) -> None:
 
 
 def index_message(conn, message_id: str, text_original) -> None:
-    _index_one(conn, message_id, text_original)
+    stage_message(conn, message_id, text_original)
     conn.commit()
 
 
@@ -48,7 +54,7 @@ def reindex_stale(conn) -> int:
     for r in rows:
         mid = r[0]
         text = conn.execute("SELECT text_original FROM messages WHERE id=?", (mid,)).fetchone()
-        _index_one(conn, mid, text[0] if text else "")
+        stage_message(conn, mid, text[0] if text else "")
     conn.commit()
     return len(rows)
 
@@ -59,6 +65,6 @@ def rebuild_all(conn) -> int:
     conn.execute("INSERT INTO fts_compact(fts_compact) VALUES('delete-all')")
     msgs = conn.execute("SELECT id, text_original FROM messages WHERE text_original IS NOT NULL").fetchall()
     for m in msgs:
-        _index_one(conn, m[0], m[1])
+        stage_message(conn, m[0], m[1])
     conn.commit()
     return len(msgs)

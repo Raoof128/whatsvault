@@ -77,18 +77,19 @@ make install          # creates .venv and installs the project with dev extras
 make check            # lint + format check + the full test suite
 ```
 
-Import an existing WhatsApp export and search it — no Meta account, no cloud, no network:
+Create the vault, import an existing WhatsApp export, and search it — no Meta
+account, no cloud, no network:
 
 ```bash
-whatsvault import --path ~/Downloads/chat.txt --dry-run   # preview
-whatsvault doctor                                        # vault, search, ingest, MCP readiness
+whatsvault init --reveal      # encrypted databases + Keychain keys; prints the MCP token once
+whatsvault import --path ~/Downloads/chat.txt --dry-run   # preview, writes nothing
+whatsvault doctor             # vault, search, ingest and MCP readiness
 ```
 
 Then start the read-only MCP server:
 
 ```bash
-whatsvault mcp-provision --reveal    # mint the Keychain token; prints it once
-whatsvault-mcp                       # serves on http://127.0.0.1:8765/mcp
+whatsvault-mcp                # serves on http://127.0.0.1:8765/mcp
 ```
 
 Point your assistant at that endpoint with the bearer token. Full walkthrough: [docs/USAGE.md](docs/USAGE.md).
