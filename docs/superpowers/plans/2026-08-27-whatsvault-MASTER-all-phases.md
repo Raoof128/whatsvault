@@ -482,6 +482,8 @@ These are genuinely unresolved decisions, **not** defects with known fixes. They
 
 # Phase 0 — Coexistence & Cloud API Verification Plan
 
+> **Execution artefact:** the fillable findings scaffold is `docs/superpowers/findings/2026-08-27-phase0-verification.md` — four gates (Coexistence / Meta contract / Cloudflare / OpenAI-2b), a PROVISIONAL assumptions registry, strict `UNKNOWN != YES` exit rule, and V8 reclassified (blocks deterministic reconciliation UX, not approval security). Run it against the real accounts and record YES/NO/UNKNOWN/BLOCKED with evidence.
+
 > **This is a verification plan, not a TDD implementation plan.** Its deliverable is a **findings document**, not code. It gates *production activation* of Phases 3–5; it does **not** gate development of them (their local cores are fixture-testable without it). Do not write or run production code here. Do not press onboarding buttons until the eligibility checks below pass.
 
 **Goal:** Establish, with receipts, whether and how this specific WhatsApp number can run under Meta Coexistence + direct Cloud API, and confirm the provider behaviours the write path depends on — before any component that talks to Meta is activated.
