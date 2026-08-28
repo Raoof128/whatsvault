@@ -174,8 +174,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** #3 — the Worker admits bodies ≤1 MB but a queue message caps at ~128 KB, so an oversized sealed body must spill to R2 (V14.5). A wrong assumption silently drops events.
 **Required evidence:** current Cloudflare Queues limits doc quote; date.
-**Observed result:** DOC-CONFIRMED (2026-08-28): Queues per-message max size = **128 KB** (account-independent); retries max = 100. The R2 oversized-ciphertext spill (#3) is therefore mandatory.
-**Raw evidence reference:** https://developers.cloudflare.com/queues/platform/limits/ (verified 2026-08-28).
+**Observed result:** PRIMARY-DOC VERIFIED (WebFetch 2026-08-28) — doc-level fact = **YES**: max message size «128 KB»; max retries «100»; free retention «24 hours» (non-configurable); paid retention «Configurable up to 14 days». Account-independent, so the R2 oversized-ciphertext spill (#3) is mandatory.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/platform/limits/ (WebFetch-verified 2026-08-28).
 **Security consequence:** silent event loss if a sealed body exceeds the cap without the R2 path.
 **Decision:** PROCEED (R2 spill implemented) / BLOCK (no spill) / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes queue message limits.
@@ -184,8 +184,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** #4 — retry/DLQ config belongs to the consumer configuration.
 **Required evidence:** current pull-consumer configuration doc; date.
-**Observed result:** DOC-CONFIRMED (2026-08-28): HTTP pull consumers must be **enabled separately** (Wrangler config-file enabling is no longer supported); retry/DLQ config belongs to the **consumer** configuration.
-**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/pull-consumers/ (verified 2026-08-28).
+**Observed result:** PRIMARY-DOC VERIFIED (WebFetch 2026-08-28): «Enabling HTTP pull from a Wrangler configuration file is no longer supported» — enable «via the wrangler CLI or via the Cloudflare dashboard». (The DLQ-belongs-to-consumer fact lives on the DLQ page → recorded under V14.3, not here.) ACCOUNT-SPECIFIC PENDING: pull enabled on THIS queue.
+**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/pull-consumers/ (WebFetch-verified 2026-08-28).
 **Security consequence:** mis-placed config could disable retries/DLQ, losing transient-failure events.
 **Decision:** PROCEED / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes consumer configuration.
@@ -194,8 +194,8 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Status:** `[ ] YES  [ ] NO  [ ] UNKNOWN  [ ] BLOCKED`
 **Why it matters:** #4 — a DLQ is itself a queue; naming one is insufficient. An explicit edge-DLQ **consumption/recovery design is required, with the DLQ's own configured retention independently verified** — do not assume a drainer/consumer implies infinite (or 14-day) retention.
 **Required evidence:** DLQ retention doc quote; date.
-**Observed result:** DOC-CONFIRMED (2026-08-28): DLQ configuration belongs to the **consumer**; a DLQ with **no active consumer retains messages only ~4 days**. ACCOUNT-SPECIFIC PENDING: the edge-DLQ consumption/recovery design + its own configured retention.
-**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/dead-letter-queues/ (verified 2026-08-28).
+**Observed result:** PRIMARY-DOC VERIFIED (WebFetch 2026-08-28): «A Dead Letter Queue (DLQ) is defined within your consumer configuration»; «Messages delivered to a DLQ without an active consumer will persist for four (4) days before being deleted from the queue». DESIGN/ACCOUNT PENDING: the edge-DLQ consumption/recovery design + its own configured retention (a drainer alone does not extend retention).
+**Raw evidence reference:** https://developers.cloudflare.com/queues/configuration/dead-letter-queues/ (WebFetch-verified 2026-08-28).
 **Security consequence:** silent loss of quarantined events past ~4 days without a drainer.
 **Decision:** PROCEED (drainer built) / BLOCK / FALLBACK REQUIRED _(unfilled)_
 **Reverification trigger:** Cloudflare changes DLQ retention.
@@ -240,7 +240,7 @@ Downstream plans MUST treat each of these as `PROVISIONAL` — never silently as
 **Why it matters:** 2b activation (#18). ChatGPT does not simply connect to arbitrary local MCP servers; a supported route (Developer Mode / Secure MCP Tunnel / remote MCP) is required, and product-plan support varies.
 **Required evidence:** OpenAI help/doc quote naming the supported route; **the intended account's actual plan tested against the currently-supported MCP modes** (not merely proof that the route exists); date. If the account's plan is not currently listed as supporting the required MCP mode, O1 is `BLOCKED` even though the technical route exists.
 **Observed result:** DOC-CONFIRMED (2026-08-28, OpenAI Help): ChatGPT cannot connect directly to a local MCP; **Secure MCP Tunnel** is the documented private/local/developer-machine route; full MCP incl. modify/write actions is currently rolling out for **Business/Enterprise/Edu**; **Pro** can use custom MCPs with **read/fetch** permissions in Developer Mode. ACCOUNT-SPECIFIC UNCONFIRMED: whether the intended account's plan supports the required MCP mode (if read-only Pro but write tools are needed later → BLOCKED for write; read surface may still proceed).
-**Raw evidence reference:** https://help.openai.com/en/articles/12584461 (verified 2026-08-28) — account/plan confirmation pending.
+**Raw evidence reference:** https://help.openai.com/en/articles/12584461 — per Raouf's 2026-08-28 primary-doc verification; an independent WebFetch (2026-08-28) returned HTTP 403 (help.openai.com is login/bot-gated), so re-confirm the wording + the account's plan capabilities in-session before O1 is ticked.
 **Security consequence:** an unsupported or insecure route could expose the loopback MCP surface (private message history) beyond the intended boundary.
 **Decision:** PROCEED (supported route) / FALLBACK REQUIRED (OpenAI Responses API remote-MCP) / BLOCK _(unfilled)_
 **Reverification trigger:** OpenAI changes MCP connectivity or product-plan support.
