@@ -5,7 +5,7 @@
 [![CI](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml/badge.svg)](https://github.com/Raoof128/whatsvault/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
-[![Tests](https://img.shields.io/badge/tests-353%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-411%20passing-brightgreen.svg)](#testing)
 
 WhatsVault ingests your WhatsApp messages into an encrypted SQLCipher vault on your own Mac, indexes them for fast bilingual (English/Persian) search, and exposes a **strictly read-only** [MCP](https://modelcontextprotocol.io) surface so an assistant like ChatGPT or Claude can search and quote them.
 
@@ -82,7 +82,11 @@ account, no cloud, no network:
 
 ```bash
 whatsvault init --reveal      # encrypted databases + Keychain keys; prints the MCP token once
+whatsvault accounts-add       # prints acc_… — the import refuses to guess its target
+whatsvault conversations-add --account-id acc_… --subject "Alice"   # prints cnv_…
 whatsvault import --path ~/Downloads/chat.txt --dry-run   # preview, writes nothing
+whatsvault import --path ~/Downloads/chat.txt --conversation-id cnv_… --account-id acc_… \
+  --timezone Australia/Sydney --date-format DMY --self-label "Me"
 whatsvault doctor             # vault, search, ingest and MCP readiness
 ```
 
@@ -133,7 +137,7 @@ make secrets    # fail if anything secret-shaped is tracked
 make test-cov   # with a coverage report
 ```
 
-353 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
+411 tests, covering crypto envelopes and golden vectors, the import grammar and its time model, FTS5 ranking, the MCP redaction and ACL fences, the approval chain and its replay gates, ingest crash recovery, and an adversarial suite for prompt injection and the red-team findings above.
 
 ## Project status
 

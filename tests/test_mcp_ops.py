@@ -19,9 +19,9 @@ from whatsvault.mcp import acl, audit, auth
 
 @pytest.fixture
 def dbs(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     v.execute("INSERT INTO accounts(id,phone_number_id) VALUES('acc','pn')")
     v.execute("INSERT INTO conversations(id,account_id,type) VALUES('cnv','acc','dm')")

@@ -53,3 +53,14 @@ def validate(prefix: str, value: str) -> str:
     if not _ULID_RE.fullmatch(value[len(marker) :]):
         raise IdError(f"id {value!r} has malformed ULID body")
     return value
+
+
+def parse_id(value: str) -> str:
+    """Return the prefix of a well-formed id, or raise. The inverse of new_id:
+    used where a caller has an identifier and needs to know what it refers to."""
+    prefix, _, body = str(value).partition("_")
+    if prefix not in PREFIXES:
+        raise IdError(f"unknown id prefix: {prefix!r}")
+    if not _ULID_RE.fullmatch(body):
+        raise IdError(f"id {value!r} has malformed ULID body")
+    return prefix

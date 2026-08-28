@@ -11,8 +11,12 @@ from ..crypto import keystore
 from . import structlog
 
 
-def open_databases(service: str):
-    """Return (vault_conn, control_conn, None) or (None, None, blocked_record)."""
+def open_databases(service: str, *, check_same_thread: bool = True):
+    """Return (vault_conn, control_conn, None) or (None, None, blocked_record).
+
+    A service that dispatches work onto worker threads passes
+    check_same_thread=False and takes responsibility for serialising access.
+    """
     from ..crypto.keystore import KeyringKeyStore
     from ..db import connection as C
     from . import fsperms, paths
@@ -21,7 +25,11 @@ def open_databases(service: str):
     p = paths.from_env()
     try:
         ks = KeyringKeyStore()
-        return (C.open_existing("vault", p.vault_db, ks), C.open_existing("control", p.control_db, ks), None)
+        return (
+            C.open_existing("vault", p.vault_db, ks, check_same_thread=check_same_thread),
+            C.open_existing("control", p.control_db, ks, check_same_thread=check_same_thread),
+            None,
+        )
     except keystore.KeyMissing as exc:
         # Distinct from a broken backend: the operator action is to provision, not
         # to repair the Keychain. KeyMissing subclasses KeyStoreError, so it must

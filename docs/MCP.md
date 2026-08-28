@@ -31,9 +31,17 @@ All six are annotated `readOnlyHint: true`, `openWorldHint: false`,
 ### `search`
 Ranked full-text search across the vault, English and Persian.
 
-| Param | Type | Notes |
+| Param | Type | Default |
 |---|---|---|
-| `q` | `SearchQuery` | terms, optional conversation filter |
+| `q` | `str` | required; whitespace-separated terms |
+| `conversation_id` | `str \| None` | all conversations |
+| `direction` | `str \| None` | both |
+| `from_ms` / `to_ms` | `int \| None` | unbounded |
+| `limit` | `int` | `50`, clamped to `[1, 200]` |
+
+The tool takes primitives and builds the query itself. It previously declared a
+`SearchQuery` parameter, which no MCP client can construct — the value arrives as
+JSON — so every call over the wire failed.
 
 Returns message views ordered by rank, each with `rank` and `tier`
 (`lexical` or `compact`). `LOCAL_ONLY` conversations are excluded.
@@ -61,7 +69,11 @@ Returns `None` for an unknown message or one in a fenced conversation.
 
 ### `get_conversation_window`
 Whether the 24-hour free-form window is open:
-`{open, last_inbound_ms, closes_at_ms}`.
+`{open, last_inbound_ms, closes_at_ms}`. Takes `conversation_id` only.
+
+The clock is the server's. This tool used to accept `now_ms`, which let the
+caller assert the time that decides the answer — the model does not get to say
+what time it is (INV-SENDPOLICY).
 
 A `LOCAL_ONLY` conversation always reports `{open: false, last_inbound_ms: 0}` —
 identical to an idle one. Activity timing is content, and this was a real leak

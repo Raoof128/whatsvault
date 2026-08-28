@@ -12,7 +12,59 @@ lives in the commit message, and the design rationale in
 
 ## [Unreleased]
 
-Nothing yet.
+Running the documented commands end to end — rather than reading them — found six
+defects that the 397-test suite could not see, because every one of them lived in
+a seam between layers that were each individually correct and individually tested.
+
+### Added
+
+- `whatsvault accounts-add`, `accounts-list`, `conversations-add` and
+  `conversations-list`. `import` refuses to guess its target, but a fresh vault
+  had no accounts and no conversations and no verb created either — so the
+  `--conversation-id` and `--account-id` it demands could not be obtained by any
+  means, and the documented import was unreachable on every new vault.
+- `tests/conftest.py`: an autouse guard that points `$WHATSVAULT_HOME` at a
+  per-test directory and fails any test that writes to the operator's real vault.
+- `tests/test_mcp_transport_tools_live.py`: tool calls over a real socket. The
+  existing live suite stopped at `initialize`, so no test had ever executed a
+  handler that touches SQLCipher.
+
+### Fixed
+
+- **Every database-backed MCP tool failed on the running server.** Connections are
+  opened once on the main thread; the SDK dispatches synchronous handlers onto a
+  worker thread, so each call raised `SQLite objects created in a thread can only
+  be used in that same thread`. Connections for the daemon are now opened with
+  `check_same_thread=False` and every handler is serialised on one lock. A wrong
+  flag is refused at startup, with the fix in the message, instead of turning each
+  call into an opaque 500.
+- **`search` had never worked over MCP.** The registered handler declared a
+  `SearchQuery` parameter and passed it straight through; a client sends JSON, so
+  the value arrived as a string and every call raised `AttributeError`. The unit
+  tests missed it because they construct a `SearchQuery` in Python and call
+  `reads.search` directly, bypassing the handler that is actually registered.
+- **`whatsvault init` could not run.** `cli.main` opened both databases before
+  dispatching, so on a fresh machine — the only place anyone runs `init` — it died
+  with `KeyMissing` before argparse's verb reached the command table. Bootstrap
+  verbs now run without connections, and a missing key reports `run
+  \`whatsvault init\` first` rather than a traceback.
+- **`cmd_init` resolved the vault layout from the environment**, not from the
+  context it was handed, so a test injecting a temporary path still created a real
+  `~/.whatsvault` — with keys in a keystore that vanished, leaving unreadable
+  ciphertext that then blocked a genuine `init`. The layout now travels with the
+  context.
+- The console scripts `whatsvault` and `whatsvault-mcp` are asserted to resolve,
+  and `main()` returns its exit code rather than raising `SystemExit` — setuptools
+  wraps it in `sys.exit()`, so a `None` return reported success for every failure.
+
+### Security
+
+- **The MCP result cap could be lifted by asking for `limit: -1`.** SQLite treats
+  `LIMIT -1` as unbounded, so `min(limit, MAX_LIMIT)` was not a cap and a single
+  call could drain the whole table through the read surface. Clamped at both ends.
+- **`get_conversation_window` took `now_ms` from the caller**, letting the model
+  assert the time that decides whether a send window is open. The tool now takes
+  `conversation_id` only and reads the server clock (INV-SENDPOLICY).
 
 ## [0.1.0] — 2026-08-28
 

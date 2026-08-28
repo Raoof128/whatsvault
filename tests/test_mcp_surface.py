@@ -30,9 +30,9 @@ def test_handlers_take_no_bearer_argument(tmp_path):
     would be published in the tool JSON schema — asking the model for the secret."""
     import inspect
 
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     handlers = server.build_tool_handlers(v, c, os.urandom(32))
     for name, fn in handlers.items():
@@ -41,9 +41,9 @@ def test_handlers_take_no_bearer_argument(tmp_path):
 
 
 def test_handlers_still_audit(tmp_path):
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     handlers = server.build_tool_handlers(v, c, os.urandom(32))
     assert handlers["list_templates"]()["status"] == "OK"
@@ -57,9 +57,9 @@ def test_build_app_is_auth_wrapped_and_refuses_anonymous(tmp_path):
 
     from whatsvault.mcp.http_auth import BearerAuthMiddleware
 
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     app = server.build_app(v, c, "tok", os.urandom(32))
     assert isinstance(app, BearerAuthMiddleware)
@@ -78,9 +78,9 @@ def test_build_app_is_auth_wrapped_and_refuses_anonymous(tmp_path):
 
 def test_build_app_enables_dns_rebinding_protection(tmp_path):
     """A loopback listener still needs Host/Origin validation."""
-    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32))
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32))
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     settings = server.transport_security_settings()
     assert settings.enable_dns_rebinding_protection is True
@@ -104,7 +104,12 @@ def test_main_symbols_resolve():
     assert callable(fsperms.harden_umask)
     p = paths.from_env({})
     assert p.vault_db and p.control_db
-    assert list(inspect.signature(C.open_existing).parameters) == ["kind", "path", "ks"]
+    positional = [
+        n
+        for n, prm in inspect.signature(C.open_existing).parameters.items()
+        if prm.kind is not inspect.Parameter.KEYWORD_ONLY
+    ]
+    assert positional == ["kind", "path", "ks"]
     assert list(inspect.signature(KeyringKeyStore.require).parameters)[1:] == ["name", "nbytes"]
     assert auth_mod.TOKEN_KEY_NAME and audit.AUDIT_KEY_NAME
 

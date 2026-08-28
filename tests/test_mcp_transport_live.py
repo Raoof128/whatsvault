@@ -40,9 +40,9 @@ def _free_port():
 @pytest.fixture(scope="module")
 def live(tmp_path_factory):
     d = tmp_path_factory.mktemp("live")
-    v = C.open_db(str(d / "v.db"), os.urandom(32))
+    v = C.open_db(str(d / "v.db"), os.urandom(32), check_same_thread=False)
     M.migrate(v, "vault")
-    c = C.open_db(str(d / "c.db"), os.urandom(32))
+    c = C.open_db(str(d / "c.db"), os.urandom(32), check_same_thread=False)
     M.migrate(c, "control")
     port = _free_port()
     app = server.build_app(v, c, TOKEN, os.urandom(32), port=port)

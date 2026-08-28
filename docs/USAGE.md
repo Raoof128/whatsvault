@@ -7,7 +7,7 @@ brew install sqlcipher          # sqlcipher3 builds against this; no arm64 wheel
 git clone https://github.com/Raoof128/whatsvault.git
 cd whatsvault
 make install
-make check                      # lint + format + 353 tests
+make check                      # lint + format + the full suite
 ```
 
 ## Create the vault
@@ -36,15 +36,32 @@ In WhatsApp: **Chat ▸ More ▸ Export chat ▸ Without media**, then:
 ```bash
 # Preview first — nothing is written.
 whatsvault import --path ~/Downloads/chat.txt --dry-run
-
-# Then import into a specific conversation.
-whatsvault import --path ~/Downloads/chat.txt \
-  --conversation-id cnv_01J… --account-id acc_01J… \
-  --timezone Australia/Sydney --date-format DMY --self-label "Me"
 ```
 
 The import refuses to guess its target: without `--conversation-id` and
-`--account-id` it stops rather than inventing one. Provenance is recorded for
+`--account-id` it stops rather than inventing one. A fresh vault has neither, so
+create them and use the IDs the commands print:
+
+```bash
+whatsvault accounts-add
+# {"ok": true, "account_id": "acc_01K3Y…"}
+
+whatsvault conversations-add --account-id acc_01K3Y… --subject "Alice"
+# {"ok": true, "conversation_id": "cnv_01K3Y…", …}
+
+whatsvault accounts-list        # if you need them again later
+whatsvault conversations-list
+```
+
+An account created this way records no phone number: a vault built from manual
+exports has no Meta account behind it, and nothing may invent one.
+
+```bash
+whatsvault import --path ~/Downloads/chat.txt \
+  --conversation-id cnv_01K3Y… --account-id acc_01K3Y… \
+  --timezone Australia/Sydney --date-format DMY --self-label "Me"
+```
+ Provenance is recorded for
 every batch, so an import can be undone exactly:
 
 ```bash

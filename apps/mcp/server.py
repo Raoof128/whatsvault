@@ -10,11 +10,13 @@ call in main() is uncovered."""
 
 import functools
 import inspect
+import threading
 import time
 
 from whatsvault.mcp import audit, reads
 from whatsvault.mcp import auth as auth_mod
 from whatsvault.mcp.http_auth import BearerAuthMiddleware
+from whatsvault.search.query import DEFAULT_LIMIT, MAX_LIMIT, SearchQuery
 
 # 18: loopback bind + the port the launchd unit and the tunnel client both target.
 HOST = "127.0.0.1"
@@ -89,6 +91,19 @@ def _json_safe(value):
     return repr(value)
 
 
+def _clamp_limit(limit) -> int:
+    """SQLite treats LIMIT -1 as unbounded, so min(limit, MAX_LIMIT) is not a cap:
+    a caller asking for -1 received the whole table. Clamp both ends."""
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        return DEFAULT_LIMIT
+    return max(1, min(n, MAX_LIMIT))
+
+
+WINDOW_TOOL_PARAMETERS = ("conversation_id",)
+
+
 def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
     """Audited read handlers, independent of the MCP SDK transport.
 
@@ -98,9 +113,21 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
     supply the secret.
     """
 
+    # The SDK runs synchronous handlers on a worker thread, and both connections
+    # are opened once on the main thread. They are therefore opened with
+    # check_same_thread=False, which lifts the DB-API's thread check but NOT the
+    # requirement to serialise: two concurrent calls on one SQLite connection
+    # interleave. This lock is that serialisation, and it also covers the audit
+    # write, which touches control.db from the same worker thread.
+    db_lock = threading.Lock()
+
     def guard(tool_name, fn):
         @functools.wraps(fn)  # keeps the real signature for schema generation
         def handler(*args, **kwargs):
+            with db_lock:
+                return _run(tool_name, fn, args, kwargs)
+
+        def _run(tool_name, fn, args, kwargs):
             try:
                 bound = inspect.signature(fn).bind(*args, **kwargs)
                 recorded = _json_safe(dict(bound.arguments))
@@ -127,8 +154,45 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
 
         return handler
 
+    def search_tool(
+        q: str,
+        conversation_id: str | None = None,
+        direction: str | None = None,
+        from_ms: int | None = None,
+        to_ms: int | None = None,
+        limit: int = DEFAULT_LIMIT,
+    ) -> list:
+        """Full-text search over the vault.
+
+        The tool takes the primitives a client can send and builds the query
+        itself. It previously took `q` and handed it to reads.search unchanged,
+        which expects a SearchQuery — so every call over the wire raised
+        AttributeError on a string.
+        """
+        return reads.search(
+            vault_conn,
+            SearchQuery(
+                terms=str(q).split(),
+                conversations=[conversation_id] if conversation_id else [],
+                direction=direction,
+                from_ms=from_ms,
+                to_ms=to_ms,
+                limit=_clamp_limit(limit),
+            ),
+        )
+
+    def conversation_window_tool(conversation_id: str) -> dict:
+        """Whether the 24-hour send window is open.
+
+        The clock is the server's. This took now_ms as a parameter, which let the
+        caller assert the time that decides the answer (INV-SENDPOLICY).
+        """
+        return reads.get_conversation_window(
+            control_conn, vault_conn, conversation_id, int(time.time() * 1000)
+        )
+
     return {
-        "search": guard("search", lambda q: reads.search(vault_conn, q)),
+        "search": guard("search", search_tool),
         "get_messages": guard(
             "get_messages",
             lambda conversation_id, from_ms=None, to_ms=None, limit=50: reads.get_messages(
@@ -141,12 +205,7 @@ def build_tool_handlers(vault_conn, control_conn, audit_key) -> dict:
         "get_message_status": guard(
             "get_message_status", lambda message_id: reads.get_message_status(vault_conn, message_id)
         ),
-        "get_conversation_window": guard(
-            "get_conversation_window",
-            lambda conversation_id, now_ms: reads.get_conversation_window(
-                control_conn, vault_conn, conversation_id, now_ms
-            ),
-        ),
+        "get_conversation_window": guard("get_conversation_window", conversation_window_tool),
         "list_templates": guard("list_templates", lambda: reads.list_templates(control_conn)),
     }
 
@@ -174,8 +233,38 @@ def build_mcp_server(vault_conn, control_conn, audit_key, *, name="whatsvault"):
     return server
 
 
+def assert_usable_from_worker_threads(**conns) -> None:
+    """Fail at startup if a connection is pinned to the thread that opened it.
+
+    Every database-backed tool raised `SQLite objects created in a thread can
+    only be used in that same thread` on the live server while the in-process
+    tests — which call handlers on the opening thread — stayed green. A wrong
+    connection flag must stop the daemon here, with the fix in the message,
+    rather than turning every tool call into an opaque 500.
+    """
+    for label, conn in conns.items():
+        box = {}
+
+        def probe(conn=conn, box=box):
+            try:
+                conn.execute("SELECT 1").fetchone()
+            except BaseException as exc:  # noqa: BLE001 - re-raised below with context
+                box["error"] = exc
+
+        t = threading.Thread(target=probe)
+        t.start()
+        t.join()
+        if "error" in box:
+            raise RuntimeError(
+                f"{label} connection cannot be used from a worker thread "
+                f"({type(box['error']).__name__}: {box['error']}); open it with "
+                "check_same_thread=False — see whatsvault.db.connection.open_db"
+            ) from box["error"]
+
+
 def build_app(vault_conn, control_conn, token, audit_key, *, name="whatsvault", port=PORT):
     """The full ASGI app: token gate in front of the Streamable-HTTP transport."""
+    assert_usable_from_worker_threads(vault=vault_conn, control=control_conn)
     mcp_server = build_mcp_server(vault_conn, control_conn, audit_key, name=name)
     inner = mcp_server.streamable_http_app(
         streamable_http_path=MCP_PATH,
@@ -220,7 +309,7 @@ def main():  # pragma: no cover - process entrypoint; see test_main_symbols_reso
     from whatsvault.crypto.keystore import KeyringKeyStore
     from whatsvault.ops import daemon
 
-    vault_conn, control_conn, blocked = daemon.open_databases("mcp")
+    vault_conn, control_conn, blocked = daemon.open_databases("mcp", check_same_thread=False)
     if blocked is not None:
         print(json.dumps(blocked))
         return 0

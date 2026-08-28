@@ -9,6 +9,7 @@ from pathlib import Path
 from .. import doctor
 from ..approval import devices, reconcile
 from ..crypto import keystore
+from ..ids import new_id
 from ..importers import whatsapp_export
 from ..mcp import acl, audit, auth
 from ..ops import bootstrap, health, paths
@@ -30,10 +31,14 @@ FORBIDDEN_VERBS = frozenset(
 
 
 class Ctx:
-    def __init__(self, vault_conn, control_conn, ks=None):
+    def __init__(self, vault_conn, control_conn, ks=None, paths=None):
         self.vault = vault_conn
         self.control = control_conn
         self.ks = ks  # optional: only the provisioning/doctor paths use it
+        # The vault layout travels with the context. cmd_init read it from the
+        # environment instead, so a test that injected a temporary home still
+        # created a real vault under $HOME (see tests/conftest.py's guard).
+        self.paths = paths
 
 
 def _rows(cur):
@@ -92,11 +97,77 @@ def cmd_init(ctx, args):
     """Create the vault: runtime directories, both encrypted databases, and keys.
 
     Takes no database connections — it runs before any exist — so it reads the
-    layout from the environment rather than from the context.
+    vault layout from the context instead.
     """
     if ctx.ks is None:
         return {"ok": False, "error": "no keystore available on this context"}
-    return bootstrap.init_vault(paths.from_env(), ctx.ks, reveal=bool(args.get("reveal")))
+    layout = ctx.paths if ctx.paths is not None else paths.from_env()
+    return bootstrap.init_vault(layout, ctx.ks, reveal=bool(args.get("reveal")))
+
+
+# A vault built only from manual exports has no Meta account behind it, so there
+# is no real phone_number_id to record. The column is NOT NULL, so it carries this
+# sentinel rather than a fabricated number — nothing here may invent one.
+LOCAL_PHONE_NUMBER_ID = "local"
+
+_CONVERSATION_TYPES = ("dm", "group")
+
+
+def cmd_accounts_add(ctx, args):
+    """Create a local account to hang conversations from.
+
+    `import` refuses to guess its target, which left a fresh vault with no way to
+    obtain the --account-id it demands. This verb is that missing source.
+    """
+    account_id = new_id("acc")
+    ctx.vault.execute(
+        "INSERT INTO accounts(id, waba_id, phone_number_id, display_phone) VALUES(?,NULL,?,NULL)",
+        (account_id, LOCAL_PHONE_NUMBER_ID),
+    )
+    ctx.vault.commit()
+    return {"ok": True, "account_id": account_id}
+
+
+def cmd_accounts_list(ctx, args):
+    # display_phone is never selected: an operations listing is not a reason to
+    # put a full number on stdout or into a launchd log (INV-DISPLAY).
+    return {
+        "ok": True,
+        "accounts": _rows(ctx.vault.execute("SELECT id, waba_id FROM accounts ORDER BY id")),
+    }
+
+
+def cmd_conversations_add(ctx, args):
+    """Create a conversation, the target an import writes into."""
+    account_id = args.get("account_id")
+    if not account_id:
+        return {"ok": False, "error": "--account-id is required (see `whatsvault accounts-add`)"}
+    known = ctx.vault.execute("SELECT 1 FROM accounts WHERE id=?", (account_id,)).fetchone()
+    if not known:
+        # Reported here rather than left to the foreign key, whose error names a
+        # constraint instead of the thing the operator has to fix.
+        return {"ok": False, "error": f"no such account: {account_id}"}
+    kind = args.get("type") or "dm"
+    if kind not in _CONVERSATION_TYPES:
+        return {"ok": False, "error": f"unknown conversation type: {kind} (expected dm or group)"}
+    conversation_id = new_id("cnv")
+    ctx.vault.execute(
+        "INSERT INTO conversations(id, account_id, type, subject) VALUES(?,?,?,?)",
+        (conversation_id, account_id, kind, args.get("subject")),
+    )
+    ctx.vault.commit()
+    return {"ok": True, "conversation_id": conversation_id, "account_id": account_id}
+
+
+def cmd_conversations_list(ctx, args):
+    return {
+        "ok": True,
+        "conversations": _rows(
+            ctx.vault.execute(
+                "SELECT id, account_id, type, subject, mcp_visibility FROM conversations ORDER BY id"
+            )
+        ),
+    }
 
 
 def cmd_import(ctx, args):
@@ -265,6 +336,10 @@ COMMANDS = {
     "init": cmd_init,
     "mcp-provision": cmd_mcp_provision,
     "mcp-visibility": cmd_mcp_visibility,
+    "accounts-add": cmd_accounts_add,
+    "accounts-list": cmd_accounts_list,
+    "conversations-add": cmd_conversations_add,
+    "conversations-list": cmd_conversations_list,
     "import": cmd_import,
     "import-undo": cmd_import_undo,
     "health": cmd_health,
@@ -280,3 +355,8 @@ COMMANDS = {
     "scheduler-enable": cmd_scheduler_enable,
     "scheduler-disable": cmd_scheduler_disable,
 }
+
+# Verbs that run before the vault exists, so cli.main must NOT open the databases
+# before dispatching them. Both touch only the Keychain; opening a database first
+# raised KeyMissing and made `init` — the documented first command — unreachable.
+BOOTSTRAP_VERBS = frozenset({"init", "mcp-provision"})
