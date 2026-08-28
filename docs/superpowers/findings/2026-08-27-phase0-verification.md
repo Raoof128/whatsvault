@@ -275,7 +275,20 @@ CONSEQUENCE FOR #19: WhatsVault's MCP currently authenticates with a **Keychain 
 - **Personal developer-mode connector** (`developers.openai.com/api/docs/guides/developer-mode`) — the track WhatsVault actually uses. Verbatim:
 > "Authentication supported: OAuth, No Authentication, and Mixed Authentication. **For OAuth, if static credentials are provided, then they will be used.** ... Mixed authentication supports OAuth and No Authentication. This means the initialize and list tools APIs use no auth, and tools use OAuth or no auth based on the security schemes set on their tool metadata."
 
-**NET O2 POSITION (corrected):** no local OAuth 2.1 authorization server is required. **Static credentials are accepted**, so the existing Phase-2a Keychain bearer token (#19) is a plausible direct fit. The earlier "publicly reachable AS → potential 2b STOP-SHIP" branch is RETRACTED — it followed from the wrong track.
+**NET O2 POSITION (revised again — read this one, it supersedes the optimistic reading above).**
+
+UI EVIDENCE (2026-08-28, screenshots of the live "New Plugin" dialog on Raouf's **Plus** account): the Authentication control is a dropdown with **exactly three options — `OAuth` (default), `No Auth`, `Mixed`**. There is **no** bearer-token / API-key / custom-header option. `Advanced OAuth settings` is present but inert, labelled "Enter a valid MCP Server URL to review discovered OAuth settings" — i.e. **OAuth config is DISCOVERED from the server**, not hand-entered. `Connection` offers a `Server URL` | `Tunnel` toggle (tunnel path is available on Plus). Server URL placeholder is `https://example.com/sse`.
+
+REVISED READING of "if static credentials are provided": in context its listed alternatives are **CIMD** and **DCR**, both of which are OAuth *client-registration* mechanisms. "Static credentials" therefore most likely means a pre-supplied OAuth `client_id`/`client_secret` that lets ChatGPT skip dynamic registration — **not** an arbitrary bearer token, and **not** a substitute for the server operating an authorization server. The claim recorded in commit a5795ce that the Phase-2a Keychain bearer token (#19) "is a plausible direct fit" is therefore DOWNGRADED to **UNLIKELY**.
+
+**HONEST CURRENT STATE — three live options, none yet verified:**
+- (a) Stand up an OAuth 2.1 AS (loopback-only if the browser-driven leg permits it — still untested, see below). Heaviest, but certain to satisfy #19.
+- (b) `Mixed` — REJECTED on inspection regardless of feasibility: "the initialize and list tools APIs use no auth", leaking surface enumeration to anyone reaching the endpoint.
+- (c) `No Auth` — REJECTED categorically; the surface returns private message history.
+
+The deciding evidence is **the field list inside `Advanced OAuth settings`**, which cannot be inspected until a reachable MCP server URL is entered. **O2 is therefore blocked on Phase-2b transport existing at all** — not on further doc reading. Stop reading; build the transport and inspect the panel.
+
+The earlier "publicly reachable AS → potential 2b STOP-SHIP" branch is NO LONGER RETRACTED but remains UNRESOLVED: whether a `127.0.0.1` authorization endpoint satisfies the discovery + browser-redirect flow is exactly the untested question, and if it does not, the stop-ship tension with the no-public-surface premise returns.
 
 **REMAINING O2 WORK (unchanged in kind, much smaller in size):**
 1. Verify empirically that the connector's static-credential field maps to an `Authorization` header the WhatsVault MCP can check with the existing `hmac.compare_digest` path. The docs do not state the header form — this is a test, not a doc read.
@@ -328,6 +341,6 @@ CONSEQUENCE: on Enterprise/Edu the disclosure boundary is **wider than "excerpts
 | 1 — Coexistence | V1, V2, V3 | _(unfilled)_ | PROCEED / BLOCK |
 | 2 — Meta contract | **Blocking:** V4, V7, V12. **Compatibility/fallback:** V5, V6, V8, V9, V10, V11, V13 — V10 may still block free-form/template *production use* until understood (not the whole contract); V8 → manual-only fallback | _(unfilled)_ | PROCEED / BLOCK |
 | 3 — Cloudflare | V14.1, V14.3, V14.4, V14.5 (V14.2/V14.6 non-blocking) | _(unfilled)_ | PROCEED / BLOCK |
-| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / **plan = Plus, eligible**; write-tool availability on Plus has CONFLICTING primary sources (needs test); **O2 DE-ESCALATED (correction) — dev-mode connector accepts STATIC CREDENTIALS; no OAuth 2.1 AS needed; bearer token is a plausible fit; earlier STOP-SHIP retracted. Tunnel still not an auth binding, so server-side auth stays mandatory; do NOT use Mixed or No Authentication**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
+| 4 — OpenAI (2b) | O1, O2, O4 (O3 non-blocking) | O1 route CONFIRMED / **plan = Plus, eligible**; write-tool availability on Plus has CONFLICTING primary sources (needs test); **O2 UNRESOLVED — live UI confirms exactly 3 modes (OAuth/No Auth/Mixed), no bearer-token option; 'static credentials' re-read as OAuth CLIENT credentials, so bearer-token fit DOWNGRADED to unlikely; No Auth and Mixed both rejected on security grounds. Deciding evidence is the discovery-gated Advanced OAuth panel → BLOCKED ON 2b TRANSPORT EXISTING, not on more doc reading**; O3 DOC-CONFIRMED (live call unrun); O4 PARTIAL (new Compliance-API surface) | PROCEED / FALLBACK / BLOCK _(unfilled — gated on plan tier + tunnel auth model)_ |
 
 **Activation is permitted only per-gate, only when that gate's blocking items are `YES` with evidence.** A NO on Gate 1 pauses the entire write path; the read/vault half (already shipped) is unaffected. Gate 4 is independent of Gates 1–3.
