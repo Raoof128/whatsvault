@@ -20,14 +20,75 @@ def test_all_tools_read_only():
         assert a["read_only_hint"] is True and a["open_world_hint"] is False
 
 
-def test_handlers_require_token(tmp_path):
-    import pytest
+def test_handlers_take_no_bearer_argument(tmp_path):
+    """#19 regression: auth moved to the transport. A `bearer` parameter here
+    would be published in the tool JSON schema — asking the model for the secret."""
+    import inspect
     v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
     c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
-    token, audit_key = "sekret", os.urandom(32)
-    handlers = server.build_tool_handlers(v, c, token, audit_key)
-    with pytest.raises(PermissionError):
-        handlers["list_templates"](bearer="wrong")
-    assert handlers["list_templates"](bearer=token)["status"] == "OK"
+    handlers = server.build_tool_handlers(v, c, os.urandom(32))
+    for name, fn in handlers.items():
+        params = inspect.signature(fn).parameters
+        assert "bearer" not in params, f"{name} still advertises a bearer parameter"
+
+
+def test_handlers_still_audit(tmp_path):
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    handlers = server.build_tool_handlers(v, c, os.urandom(32))
+    assert handlers["list_templates"]()["status"] == "OK"
     row = c.execute("SELECT tool, args_hash FROM audit_log").fetchone()
     assert row["tool"] == "list_templates" and len(row["args_hash"]) == 64
+
+
+def test_build_app_is_auth_wrapped_and_refuses_anonymous(tmp_path):
+    """The transport must not be reachable without the token (#18/#19)."""
+    import asyncio
+    from whatsvault.mcp.http_auth import BearerAuthMiddleware
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    app = server.build_app(v, c, "tok", os.urandom(32))
+    assert isinstance(app, BearerAuthMiddleware)
+
+    sent = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(m):
+        sent.append(m)
+
+    asyncio.run(app({"type": "http", "method": "POST", "path": "/mcp", "headers": []},
+                    receive, send))
+    assert next(m["status"] for m in sent if m["type"] == "http.response.start") == 401
+
+
+def test_build_app_enables_dns_rebinding_protection(tmp_path):
+    """A loopback listener still needs Host/Origin validation."""
+    v = C.open_db(str(tmp_path / "v.db"), os.urandom(32)); M.migrate(v, "vault")
+    c = C.open_db(str(tmp_path / "c.db"), os.urandom(32)); M.migrate(c, "control")
+    settings = server.transport_security_settings()
+    assert settings.enable_dns_rebinding_protection is True
+    assert settings.allowed_hosts, "allowed_hosts must be pinned, not empty"
+    assert all("127.0.0.1" in h or "localhost" in h for h in settings.allowed_hosts)
+
+
+def test_main_symbols_resolve():
+    """`main()` is pragma-no-cover, so nothing else would catch a renamed import.
+    Assert every symbol it touches actually exists (a prior draft referenced a
+    non-existent whatsvault.db.paths and a 1-arg KeyStore.require)."""
+    import inspect
+    from whatsvault.crypto.keystore import KeyringKeyStore
+    from whatsvault.db import connection as C
+    from whatsvault.ops import fsperms, paths
+    from whatsvault.mcp import audit, auth as auth_mod
+
+    assert callable(fsperms.harden_umask)
+    p = paths.from_env({})
+    assert p.vault_db and p.control_db
+    assert list(inspect.signature(C.open_existing).parameters) == ["kind", "path", "ks"]
+    assert list(inspect.signature(KeyringKeyStore.require).parameters)[1:] == ["name", "nbytes"]
+    assert auth_mod.TOKEN_KEY_NAME and audit.AUDIT_KEY_NAME
+    src = inspect.getsource(server.main)
+    for symbol in ("harden_umask", "from_env", "KeyringKeyStore", "open_existing", "build_app"):
+        assert symbol in src
