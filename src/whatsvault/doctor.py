@@ -107,3 +107,49 @@ def check_ingest(vault_conn) -> list[dict]:
     findings.append({"check": "circuit_breaker", "ok": row[0] == "CLOSED",
                      "detail": row[0] + (f": {row[1]}" if row[1] else "")})
     return findings
+
+
+def check_mcp(vault_conn, control_conn, ks=None) -> list[dict]:
+    """MCP daemon readiness (#18/#19/#21/#23).
+
+    `ks` is optional so this stays runnable in CI, where there is no Keychain;
+    pass a keystore in production to also verify the daemon's keys exist. Without
+    them the launchd unit exits 1 and KeepAlive restarts it, so an unprovisioned
+    daemon looks like a restart loop rather than a stated precondition.
+    """
+    findings: list[dict] = []
+
+    cols = [r[1] for r in vault_conn.execute("PRAGMA table_info(conversations)")]
+    findings.append({"check": "mcp_visibility_column", "ok": "mcp_visibility" in cols,
+                     "detail": "vault.conversations.mcp_visibility (LOCAL_ONLY fence)"})
+
+    present = control_conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'").fetchone()
+    findings.append({"check": "audit_log_present", "ok": present is not None,
+                     "detail": "control.audit_log"})
+
+    triggers = {r[0] for r in control_conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit_log'")}
+    needed = {"trg_audit_no_update", "trg_audit_no_delete"}
+    findings.append({"check": "audit_log_append_only", "ok": needed <= triggers,
+                     "detail": f"missing={sorted(needed - triggers)}"})
+
+    if "mcp_visibility" in cols:
+        n = vault_conn.execute(
+            "SELECT COUNT(*) FROM conversations WHERE mcp_visibility='LOCAL_ONLY'").fetchone()[0]
+        # Informational: a fenced conversation is a deliberate choice, never a fault.
+        findings.append({"check": "mcp_local_only_conversations", "ok": True,
+                         "detail": f"{n} conversation(s) fenced from MCP"})
+
+    if ks is not None:
+        from .mcp import audit as _audit
+        from .mcp import auth as _auth
+        for check, name in (("mcp_token_provisioned", _auth.TOKEN_KEY_NAME),
+                            ("mcp_audit_key_provisioned", _audit.AUDIT_KEY_NAME)):
+            try:
+                ks.require(name, 32)
+                ok, detail = True, name
+            except Exception as exc:
+                ok, detail = False, f"{name}: {type(exc).__name__} (run `whatsvault mcp-provision`)"
+            findings.append({"check": check, "ok": ok, "detail": detail})
+    return findings

@@ -6,6 +6,7 @@ import sys
 from . import commands
 
 _OPT_FLAGS = ["--device-id", "--job-id", "--candidate-id", "--decision", "--dlq-id", "--path"]
+_BOOL_FLAGS = ["--reveal"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -15,6 +16,8 @@ def build_parser() -> argparse.ArgumentParser:
         sp = sub.add_parser(verb)
         for flag in _OPT_FLAGS:
             sp.add_argument(flag, default=None)
+        for flag in _BOOL_FLAGS:
+            sp.add_argument(flag, action="store_true", default=False)
     return p
 
 
@@ -37,5 +40,5 @@ def main():  # pragma: no cover - production entry: opens real DBs via Keychain
     p = paths.from_env()
     ks = KeyringKeyStore()
     ctx = commands.Ctx(C.open_existing("vault", p.vault_db, ks),
-                       C.open_existing("control", p.control_db, ks))
+                       C.open_existing("control", p.control_db, ks), ks=ks)
     sys.exit(run(sys.argv[1:], ctx))

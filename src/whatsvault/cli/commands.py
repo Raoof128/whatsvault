@@ -4,6 +4,8 @@ sign/mint verb, and no handler drives the sender write path or the capability gr
 Approval authority is the phone's Secure Enclave signature (Phase 4)."""
 from .. import doctor
 from ..approval import devices, reconcile
+from ..crypto import keystore
+from ..mcp import audit, auth
 from ..ops import health
 
 FORBIDDEN_VERBS = frozenset({
@@ -13,9 +15,10 @@ FORBIDDEN_VERBS = frozenset({
 
 
 class Ctx:
-    def __init__(self, vault_conn, control_conn):
+    def __init__(self, vault_conn, control_conn, ks=None):
         self.vault = vault_conn
         self.control = control_conn
+        self.ks = ks                 # optional: only the provisioning/doctor paths use it
 
 
 def _rows(cur):
@@ -24,7 +27,40 @@ def _rows(cur):
 
 def cmd_doctor(ctx, args):
     return {"ok": True, "vault": doctor.check_vault(ctx.vault),
-            "search": doctor.check_search(ctx.vault), "ingest": doctor.check_ingest(ctx.vault)}
+            "search": doctor.check_search(ctx.vault), "ingest": doctor.check_ingest(ctx.vault),
+            "mcp": doctor.check_mcp(ctx.vault, ctx.control, ks=getattr(ctx, "ks", None))}
+
+
+def cmd_mcp_provision(ctx, args):
+    """Create the MCP daemon's Keychain keys if absent. Never rotates: replacing
+    the token would silently break an already-configured connector, and replacing
+    the audit key would orphan every existing audit HMAC.
+
+    The token is withheld unless --reveal is passed, because cli.main prints
+    results to stdout and the launchd units capture stdout to a log file.
+    """
+    if ctx.ks is None:
+        return {"ok": False, "error": "no keystore available on this context"}
+    provisioned, already = [], []
+    for name in (auth.TOKEN_KEY_NAME, audit.AUDIT_KEY_NAME):
+        try:
+            ctx.ks.require(name, 32)
+            already.append(name)
+        except keystore.KeyMissing:
+            ctx.ks.provision(name, 32)
+            provisioned.append(name)
+        except Exception as exc:
+            # e.g. a present-but-wrong-length key. Report it; never overwrite —
+            # provisioning over a corrupt key destroys evidence of the corruption.
+            return {"ok": False, "error": f"{name}: {type(exc).__name__}: {exc}"}
+    out = {"ok": True, "provisioned": provisioned, "already_present": already,
+           "endpoint": "http://127.0.0.1:8765/mcp"}
+    if args.get("reveal"):
+        out["token"] = ctx.ks.require(auth.TOKEN_KEY_NAME, 32).hex()
+    else:
+        out["note"] = ("token withheld; re-run with --reveal to print it "
+                       "(avoid doing so where stdout is captured to a log)")
+    return out
 
 
 def cmd_health(ctx, args):
@@ -94,6 +130,7 @@ def cmd_scheduler_disable(ctx, args):
 
 COMMANDS = {
     "doctor": cmd_doctor,
+    "mcp-provision": cmd_mcp_provision,
     "health": cmd_health,
     "devices-list": cmd_devices_list,
     "devices-revoke": cmd_devices_revoke,
