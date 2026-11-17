@@ -18,6 +18,19 @@ Then publishing the vault behind an OAuth server, and attacking it, found
 nineteen more in code that was one commit old. Every one lived in a seam between
 layers that were each individually correct and individually tested.
 
+### Changed — the README says what is built
+
+- **The opening of the README described the send path in the present tense**
+  ("It can also draft replies… Every outbound message requires a fresh,
+  per-message, biometric signature from a hardware key on your iPhone"), while
+  the status table further down said the iPhone app is "Contract defined; not
+  built" and live sending is inert. A reader who stopped at the first screen was
+  told the hardware approval exists. The opening, the "why" list, the invariants
+  preamble and the architecture diagram now say which parts are code and which
+  are contracts: no MCP tool drafts or sends, the Mac side of the approval chain
+  is implemented and tested, and the iPhone app, the Cloudflare edge and the Meta
+  sender are not built. No code changed.
+
 ### Added — public deployment
 
 - **OAuth 2.1 authorization server** (`whatsvault.mcp.oauth`, `oauth_http`),

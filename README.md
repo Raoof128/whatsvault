@@ -7,11 +7,11 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/downloads/)
 [![Tests](https://img.shields.io/badge/tests-539%20passing-brightgreen.svg)](#testing)
 
-WhatsVault ingests your WhatsApp messages into an encrypted SQLCipher vault on your own Mac, indexes them for fast bilingual (English/Persian) search, and exposes a **strictly read-only** [MCP](https://modelcontextprotocol.io) surface so an assistant like ChatGPT or Claude can search and quote them.
+WhatsVault imports your exported WhatsApp chats into an encrypted SQLCipher vault on your own Mac (a live webhook ingest is designed, and its Cloudflare edge is not built yet), indexes them for fast bilingual (English/Persian) search, and exposes a **strictly read-only** [MCP](https://modelcontextprotocol.io) surface so an assistant like ChatGPT or Claude can search and quote them.
 
-It can also *draft* replies. It cannot send them. Every outbound message requires a fresh, per-message, biometric signature from a hardware key on your iPhone — on a channel the model cannot reach.
+Nothing in this repository can send a WhatsApp message. Sending is designed, not live: each outbound message would need a fresh, per-message biometric signature from a Secure Enclave key on an enrolled iPhone, on a channel the model cannot reach. The Mac-side half of that design (immutable drafts, device enrolment, policy, signature verification and replay gates) is implemented and tested. The iPhone app that would hold the key, the Cloudflare ingest edge and the Meta sender are written contracts with no code yet, and no draft or send tool is exposed over MCP.
 
-> **Status: alpha, and honest about it.** The vault, search, and read-only MCP are implemented and tested. The write path is built but deliberately inert: it is gated behind external verification that is [documented, not assumed](docs/internal/findings/2026-08-27-phase0-verification.md). See [Project status](#project-status).
+> **Status: alpha, and honest about it.** The vault, the importer, search and the read-only MCP are implemented and tested. The write path is partly built and inert: its approval chain is tested on the Mac, its iPhone app and Meta sender are not built, and live sending is gated behind external verification that is [documented, not assumed](docs/internal/findings/2026-08-27-phase0-verification.md). See [Project status](#project-status).
 
 ---
 
@@ -21,11 +21,11 @@ Handing a chat archive to an AI assistant usually means handing it to a third pa
 
 - **Your messages stay on your machine.** The archive is SQLCipher-encrypted under a key that lives only in the macOS Keychain. Cloud infrastructure, where used, stores ciphertext only.
 - **The assistant gets read access, and only read access.** There is no send verb, no approve verb, and no credential anywhere on the MCP surface — and a CI test proves it, by asserting the registered tool set is disjoint from a named forbidden set.
-- **Sending requires a human, in hardware, out of band.** A `prepare → send` pair inside one model turn is not a security boundary; a model can call both back to back. So authorisation lives on your phone's Secure Enclave instead.
+- **Sending is designed to require a human, in hardware, out of band.** A `prepare → send` pair inside one model turn is not a security boundary; a model can call both back to back. So the design puts authorisation on your phone's Secure Enclave instead. That path is not live yet (see [Project status](#project-status)).
 
 ## Core guarantees
 
-These are the invariants the design is built around. Each is enforced by code and covered by tests, not by convention.
+These are the invariants the design is built around. For everything that is built, each is enforced by code and covered by tests, not by convention. Two of them reach into parts that are not built: INV-APPROVAL holds today because no component can send at all, and INV-HARDWARE is tested only as far as the Mac goes (it accepts nothing but a valid P-256 signature from an enrolled device key). That the key lives in a Secure Enclave is a property of the iPhone app, which does not exist yet.
 
 | Invariant | Guarantee |
 |---|---|
@@ -65,6 +65,8 @@ The full set, with rationale and threat model, is in the [design specification](
                                               dispatcher ──▶ whatsvault-meta ──▶ WhatsApp
                                               (no send authority of its own)
 ```
+
+The diagram shows the whole design. **Built and tested:** the importer, the ingest daemon, the vault and its search index, the loopback MCP with its six read tools, the OAuth 2.1 server, and the Mac side of the approval chain (drafts, enrolment, policy, signature verification). **Designed, not built:** the Cloudflare Worker and queue, the `prepare_message` tool, the iPhone approval app, `whatsvault-meta` and any live send. Their contracts are the `README.md` files under `apps/cf-webhook`, `apps/push`, `apps/meta` and `ios/WhatsVaultApproval`.
 
 A fuller walkthrough, including trust boundaries and the data model, is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
